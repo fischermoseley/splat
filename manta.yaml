@@ -2,7 +2,6 @@
 cores:
   io_core:
     type: io
-    user_clock: True
 
     inputs:
       probe0: 1
@@ -14,15 +13,9 @@ cores:
       probe4:
         width: 1
         initial_value: 1
-      probe5:
-        width: 2
-        initial_value: 3
-      probe6:
-        width: 8
-        initial_value: 6
-      probe7:
-        width: 20
-        initial_value: 7
+      probe5: 2
+      probe6: 8
+      probe7: 20
 
 uart:
   port: "auto"

@@ -70,6 +70,8 @@ sim.add_clock(1e-6) # 1 MHz
 sim.add_sync_process(bench)
 with sim.write_vcd("up_counter.vcd"):
     sim.run()
+
+
 # --- CONVERT ---
 from amaranth.back import verilog
 

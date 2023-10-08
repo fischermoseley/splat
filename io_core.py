@@ -74,23 +74,23 @@ class IOCore(Elaboratable):
         # Handle register reads and writes
         with m.If(  (self.addr_i >= self.base_addr) & \
                     (self.addr_o <= self.max_addr)):
-
             # writes
             with m.If(self.rw_i):
                 with m.Switch(self.addr_i - self.base_addr):
+
+                    # strobe register
                     with m.Case(0):
                         m.d.sync += self.strobe.eq(self.data_i)
 
-                    with m.Case(6):
-                        m.d.sync += self.probe4_buf.eq(self.data_i)
-                    with m.Case(7):
-                        m.d.sync += self.probe5_buf.eq(self.data_i)
-                    with m.Case(8):
-                        m.d.sync += self.probe6_buf.eq(self.data_i)
-                    with m.Case(9):
-                        m.d.sync += self.probe7_buf[0:15].eq(self.data_i)
-                    with m.Case(10):
-                        m.d.sync += self.probe7_buf[16:19].eq(self.data_i)
+                    # output probes
+                    for name in self.config['outputs']:
+                        probe = self.memory_map[name + '_buf']
+                        addrs = probe['addrs']
+                        signals = probe['signals']
+
+                        for addr, signal in zip(addrs, signals):
+                            with m.Case(addr):
+                                m.d.sync += signal.eq(self.data_i)
 
             # reads
             with m.Else():
@@ -98,27 +98,25 @@ class IOCore(Elaboratable):
                     with m.Case(0):
                         m.d.sync += self.data_o.eq(self.strobe)
 
-                    with m.Case(1):
-                        m.d.sync += self.data_o.eq(self.probe0_buf)
-                    with m.Case(2):
-                        m.d.sync += self.data_o.eq(self.probe1_buf)
-                    with m.Case(3):
-                        m.d.sync += self.data_o.eq(self.probe2_buf)
-                    with m.Case(4):
-                        m.d.sync += self.data_o.eq(self.probe3_buf[0:15])
-                    with m.Case(5):
-                        m.d.sync += self.data_o.eq(self.probe3_buf[16:19])
+                    # input probes
+                    for name in self.config['inputs']:
+                        probe = self.memory_map[name + '_buf']
+                        addrs = probe['addrs']
+                        signals = probe['signals']
 
-                    with m.Case(6):
-                        m.d.sync += self.data_o.eq(self.probe4_buf)
-                    with m.Case(7):
-                        m.d.sync += self.data_o.eq(self.probe5_buf)
-                    with m.Case(8):
-                        m.d.sync += self.data_o.eq(self.probe6_buf)
-                    with m.Case(9):
-                        m.d.sync += self.data_o.eq(self.probe7_buf[0:15])
-                    with m.Case(10):
-                        m.d.sync += self.data_o.eq(self.probe7_buf[16:19])
+                        for addr, signal in zip(addrs, signals):
+                            with m.Case(addr):
+                                m.d.sync += self.data_o.eq(signal)
+
+                    # output probes
+                    for name in self.config['outputs']:
+                        probe = self.memory_map[name + '_buf']
+                        addrs = probe['addrs']
+                        signals = probe['signals']
+
+                        for addr, signal in zip(addrs, signals):
+                            with m.Case(addr):
+                                m.d.sync += self.data_o.eq(signal)
         return m
 
     def check_config(self, config):
@@ -228,7 +226,7 @@ class IOCore(Elaboratable):
 
             'probe3_buf' : {
                 'addrs': [self.base_addr + 4, self.base_addr + 5],
-                'signals': [self.probe3_buf[0:15], self.probe3_buf[16:19]]
+                'signals': [self.probe3_buf[0:16], self.probe3_buf[16:20]]
             },
 
             'probe4_buf' : {
@@ -248,7 +246,7 @@ class IOCore(Elaboratable):
 
             'probe7_buf' : {
                 'addrs': [self.base_addr + 9, self.base_addr + 10],
-                'signals': [self.probe7_buf[0:15], self.probe7_buf[16:19]]
+                'signals': [self.probe7_buf[0:16], self.probe7_buf[16:20]]
             }
         }
 
@@ -276,29 +274,3 @@ class IOCore(Elaboratable):
         # get value from buffer
         addrs = self.memory_map[probe_name+'_buf']['addrs']
         return words_to_value(self.interface.read(addrs))
-
-
-
-
-
-    # def set_probe(self, probe_name, value):
-    #     probe_attrs = self.config['outputs'][probe_name]
-
-    #     if isinstance(probe_attrs, int):
-    #         width = probe_attrs
-
-    #     if isinstance(probe_attrs, dict)
-    #         width = probe_attrs['width']
-
-    #     # split data into 16-bit chunks
-    #     n_chunks = ceil(width / 16)
-    #     datas = value_to_chunks(value, n_chunks)
-    #     addrs = self.memory_map[probe]
-
-    #     # set value in buffer
-    #     self.interface.write(addrs, datas)
-
-    #     # pulse strobe register
-    #     self.interface.write(self.base_addr, 0)
-    #     self.interface.write(self.base_addr, 1)
-    #     self.interface.write(self.base_addr, 0)
