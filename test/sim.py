@@ -1,5 +1,5 @@
 from amaranth.sim import Simulator
-from io_core import IOCore
+from src.io_core import IOCore
 import yaml
 
 with open('manta.yaml', 'r') as file:

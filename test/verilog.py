@@ -1,4 +1,4 @@
-from io_core import IOCore
+from src.io_core import IOCore
 from amaranth.back import verilog
 import yaml
 
