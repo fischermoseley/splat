@@ -9,7 +9,7 @@ class Splat(Elaboratable):
         self.check_config()
 
         self.m = Module()
-        self.interface = self.get_interface()
+        # self.interface = self.get_interface()
         self.add_cores()
         self.ports = self.get_top_level_ports()
         self.connect_cores()
@@ -35,20 +35,20 @@ class Splat(Elaboratable):
             raise ValueError("Unable to recognize configuration file extension.")
 
     def check_config(self):
-        if 'cores' not in config:
+        if 'cores' not in self.config:
             raise ValueError('No cores specified in configuration file.')
 
-        if not len(config["cores"]) > 0:
+        if not len(self.config["cores"]) > 0:
             raise ValueError('Must specify at least one core.')
 
     def get_interface(self):
-        if 'uart' in config:
+        if 'uart' in self.config:
             from .uart import UARTInterface
-            return UARTInterface(config['uart'])
+            return UARTInterface(self.config['uart'])
 
-        elif 'ethernet' in config:
+        elif 'ethernet' in self.config:
             from .ethernet import EthernetInterface
-            return EthernetInterface(config['ethernet'])
+            return EthernetInterface(self.config['ethernet'])
 
         else:
             raise ValueError('Unrecognized interface specified.')

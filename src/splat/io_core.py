@@ -4,120 +4,17 @@ from math import ceil
 
 class IOCore(Elaboratable):
     """
-    Me just fucking around, mostly.
-
+    Contains the HDL to instantiate an IO core on a FPGA, and the functions to interact with it. For
+    more information on the core itself, check out the IO core documentation.
     """
 
     def __init__(self, config, base_addr):
-        # Config
         self.config = config
-        self.check_config(self.config)
-
-        # Bus Ports
-        self.addr_i = Signal(16)
-        self.data_i = Signal(16)
-        self.rw_i = Signal()
-        self.valid_i = Signal()
-
-        self.addr_o = Signal(16)
-        self.data_o = Signal(16)
-        self.rw_o = Signal()
-        self.valid_o = Signal()
-
-        # Input Probes (and buffers)
-        for name, width in config['inputs'].items():
-            setattr(self, name, Signal(width, name=name))
-            setattr(self, name + '_buf', Signal(width, name=name+'_buf'))
-
-        # Output Probes (and buffers)
-        for name, attrs in config['outputs'].items():
-            if isinstance(attrs, dict):
-                width = attrs['width']
-                initial_value = attrs['initial_value']
-            else:
-                width = attrs
-                initial_value = 0
-
-            setattr(self, name, Signal(width, name=name, reset=initial_value))
-            setattr(self, name + '_buf', Signal(width, name=name+'_buf', reset=initial_value))
-
-        # Strobe Register
-        self.strobe = Signal(reset = 0)
-
-        # Memory Map
         self.base_addr = base_addr
-        self.memory_map, self.max_addr = self.assign_memory()
 
-    def elaborate(self, platform):
-        m = Module()
-
-        # Shuffle bus transactions along
-        m.d.sync += self.addr_o.eq(self.addr_i)
-        m.d.sync += self.data_o.eq(self.data_i)
-        m.d.sync += self.rw_o.eq(self.rw_i)
-        m.d.sync += self.valid_o.eq(self.valid_i)
-
-        # Update buffers from probes
-        with m.If(self.strobe):
-            # Input buffers
-            for name in self.config['inputs']:
-                input_probe = getattr(self, name)
-                input_probe_buf = getattr(self, name + '_buf')
-                m.d.sync += input_probe_buf.eq(input_probe)
-
-            # Output buffers
-            for name in self.config['outputs']:
-                output_probe = getattr(self, name)
-                output_probe_buf = getattr(self, name + '_buf')
-                m.d.sync += output_probe.eq(output_probe_buf)
-
-        # Handle register reads and writes
-        with m.If(  (self.addr_i >= self.base_addr) & \
-                    (self.addr_o <= self.max_addr)):
-            # writes
-            with m.If(self.rw_i):
-                with m.Switch(self.addr_i - self.base_addr):
-
-                    # strobe register
-                    with m.Case(0):
-                        m.d.sync += self.strobe.eq(self.data_i)
-
-                    # output probes
-                    for name in self.config['outputs']:
-                        probe = self.memory_map[name + '_buf']
-                        addrs = probe['addrs']
-                        signals = probe['signals']
-
-                        for addr, signal in zip(addrs, signals):
-                            with m.Case(addr):
-                                m.d.sync += signal.eq(self.data_i)
-
-            # reads
-            with m.Else():
-                with m.Switch(self.addr_i - self.base_addr):
-                    with m.Case(0):
-                        m.d.sync += self.data_o.eq(self.strobe)
-
-                    # input probes
-                    for name in self.config['inputs']:
-                        probe = self.memory_map[name + '_buf']
-                        addrs = probe['addrs']
-                        signals = probe['signals']
-
-                        for addr, signal in zip(addrs, signals):
-                            with m.Case(addr):
-                                m.d.sync += self.data_o.eq(signal)
-
-                    # output probes
-                    for name in self.config['outputs']:
-                        probe = self.memory_map[name + '_buf']
-                        addrs = probe['addrs']
-                        signals = probe['signals']
-
-                        for addr, signal in zip(addrs, signals):
-                            with m.Case(addr):
-                                m.d.sync += self.data_o.eq(signal)
-        return m
+        self.check_config(self.config)
+        self.define_signals()
+        self.mmap, self.max_addr = self.assign_memory()
 
     def check_config(self, config):
         # make sure ports are defined
@@ -176,6 +73,38 @@ class IOCore(Elaboratable):
                     if not attrs['width'] > 0:
                         raise ValueError(f'Input probe "{name}" must have positive width.')
 
+    def define_signals(self):
+        # Bus Ports
+        self.addr_i = Signal(16)
+        self.data_i = Signal(16)
+        self.rw_i = Signal()
+        self.valid_i = Signal()
+
+        self.addr_o = Signal(16)
+        self.data_o = Signal(16)
+        self.rw_o = Signal()
+        self.valid_o = Signal()
+
+        # Input Probes (and buffers)
+        for name, width in self.config['inputs'].items():
+            setattr(self, name, Signal(width, name=name))
+            setattr(self, name + '_buf', Signal(width, name=name+'_buf'))
+
+        # Output Probes (and buffers)
+        for name, attrs in self.config['outputs'].items():
+            if isinstance(attrs, dict):
+                width = attrs['width']
+                initial_value = attrs['initial_value']
+            else:
+                width = attrs
+                initial_value = 0
+
+            setattr(self, name, Signal(width, name=name, reset=initial_value))
+            setattr(self, name + '_buf', Signal(width, name=name+'_buf', reset=initial_value))
+
+        # Strobe Register
+        self.strobe = Signal(reset = 0)
+
     def assign_memory(self):
         """
         the memory map is a dict that maps registers (in memory) to their locations (in memory)
@@ -200,77 +129,95 @@ class IOCore(Elaboratable):
             ... and so on
         }
 
-        let's try implementing this and we'll see if we like it
         """
+        mmap = {}
 
-        memory_map = {
-            'strobe' : {
-                'addrs': [self.base_addr],
-                'signals': [self.strobe]
-            },
+        # Add strobe register first
+        mmap['strobe'] = dict(addrs=[self.base_addr], signals=[self.strobe])
 
-            'probe0_buf' : {
-                'addrs': [self.base_addr + 1],
-                'signals': [self.probe0_buf]
-            },
+        # Add all input and output probes
+        all_probes = {**self.config['inputs'], **self.config['outputs']}
+        for name, attrs in all_probes.items():
 
-            'probe1_buf' : {
-                'addrs': [self.base_addr + 2],
-                'signals': [self.probe1_buf]
-            },
+            # Handle output probes that might have initial value specified in addition to width
+            if isinstance(attrs, dict):
+                width = attrs['width']
+            else:
+                width = attrs
 
-            'probe2_buf' : {
-                'addrs': [self.base_addr + 3],
-                'signals': [self.probe2_buf]
-            },
+            # Assign addresses
+            last_used_addr = list(mmap.values())[-1]['addrs'][-1]
+            addrs = [last_used_addr + 1 + i for i in range(ceil(width/16))]
 
-            'probe3_buf' : {
-                'addrs': [self.base_addr + 4, self.base_addr + 5],
-                'signals': [self.probe3_buf[0:16], self.probe3_buf[16:20]]
-            },
+            # Slice signal into 16-bit chunks
+            signal = getattr(self, name + '_buf')
+            signals = [signal[16*i:16*(i+1)] for i in range(ceil(width/16)) ]
 
-            'probe4_buf' : {
-                'addrs': [self.base_addr + 6],
-                'signals': [self.probe4_buf]
-            },
+            mmap[name + '_buf'] = {'addrs': addrs, 'signals' : signals}
 
-            'probe5_buf' : {
-                'addrs': [self.base_addr + 7],
-                'signals': [self.probe5_buf]
-            },
+        # Compute maximum address used by the core
+        max_addr = list(mmap.values())[-1]['addrs'][-1]
+        return mmap, max_addr
 
-            'probe6_buf' : {
-                'addrs': [self.base_addr + 8],
-                'signals': [self.probe6_buf]
-            },
+    def elaborate(self, platform):
+        m = Module()
 
-            'probe7_buf' : {
-                'addrs': [self.base_addr + 9, self.base_addr + 10],
-                'signals': [self.probe7_buf[0:16], self.probe7_buf[16:20]]
-            }
-        }
+        # Shuffle bus transactions along
+        m.d.sync += self.addr_o.eq(self.addr_i)
+        m.d.sync += self.data_o.eq(self.data_i)
+        m.d.sync += self.rw_o.eq(self.rw_i)
+        m.d.sync += self.valid_o.eq(self.valid_i)
 
-        return memory_map, self.base_addr + 10
+        # Update buffers from probes
+        with m.If(self.strobe):
+            # Input buffers
+            for name in self.config['inputs']:
+                input_probe = getattr(self, name)
+                input_probe_buf = getattr(self, name + '_buf')
+                m.d.sync += input_probe_buf.eq(input_probe)
+
+            # Output buffers
+            for name in self.config['outputs']:
+                output_probe = getattr(self, name)
+                output_probe_buf = getattr(self, name + '_buf')
+                m.d.sync += output_probe.eq(output_probe_buf)
+
+        # Handle register reads and writes
+        with m.If(  (self.addr_i >= self.base_addr)):
+            with m.If( (self.addr_o <= self.max_addr)):
+
+                for entry in self.mmap.values():
+                    for addr, signal in zip(entry['addrs'], entry['signals']):
+
+                        with m.If(self.rw_i):
+                            with m.If(self.addr_i == addr):
+                                m.d.sync += signal.eq(self.data_i)
+
+                        with m.Else():
+                            with m.If(self.addr_i == addr):
+                                m.d.sync += self.data_o.eq(signal)
+
+        return m
 
     def set_probe(self, probe_name, value):
         # set value in buffer
-        addrs = self.memory_map[probe_name+'_buf']['addrs']
+        addrs = self.mmap[probe_name+'_buf']['addrs']
         datas = value_to_words(value, len(addrs))
         self.interface.write(addrs, datas)
 
         # pulse strobe register
-        strobe_addr = self.memory_map['strobe']['addrs'][0]
+        strobe_addr = self.mmap['strobe']['addrs'][0]
         self.interface.write(strobe_addr, 0)
         self.interface.write(strobe_addr, 1)
         self.interface.write(strobe_addr, 0)
 
     def get_probe(self, probe_name):
         # pulse strobe register
-        strobe_addr = self.memory_map['strobe']['addrs'][0]
+        strobe_addr = self.mmap['strobe']['addrs'][0]
         self.interface.write(strobe_addr, 0)
         self.interface.write(strobe_addr, 1)
         self.interface.write(strobe_addr, 0)
 
         # get value from buffer
-        addrs = self.memory_map[probe_name+'_buf']['addrs']
+        addrs = self.mmap[probe_name+'_buf']['addrs']
         return words_to_value(self.interface.read(addrs))

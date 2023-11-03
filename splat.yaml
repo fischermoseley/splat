@@ -13,9 +13,13 @@ cores:
       probe4:
         width: 1
         initial_value: 1
-      probe5: 2
+      probe5:
+        width: 2
+        initial_value: 2
       probe6: 8
-      probe7: 20
+      probe7:
+        width: 20
+        initial_value: 65538
 
 uart:
   port: "auto"
