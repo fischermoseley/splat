@@ -2,6 +2,7 @@ from amaranth import *
 from warnings import warn
 from math import ceil
 
+
 class IOCore(Elaboratable):
     """
     Contains the HDL to instantiate an IO core on a FPGA, and the functions to interact with it. For
@@ -18,8 +19,8 @@ class IOCore(Elaboratable):
 
     def check_config(self, config):
         # make sure ports are defined
-        if 'inputs' not in config or 'outputs' not in config:
-            raise ValueError('No input or output ports specified.')
+        if "inputs" not in config or "outputs" not in config:
+            raise ValueError("No input or output ports specified.")
 
         # check for unrecognized options
         valid_options = ["type", "inputs", "outputs", "user_clock"]
@@ -28,15 +29,17 @@ class IOCore(Elaboratable):
                 warn(f"Ignoring unrecognized option '{option}' in IO core.'")
 
         # check that user_clock is a bool
-        if 'user_clock' in config:
-            if not isinstance(config['user_clock'], bool):
-                raise ValueError('Option user_clock must be a boolean.')
+        if "user_clock" in config:
+            if not isinstance(config["user_clock"], bool):
+                raise ValueError("Option user_clock must be a boolean.")
 
         # check that inputs is only dicts of format name:width
-        if 'inputs' in config:
-            for name, attrs in config['inputs'].items():
+        if "inputs" in config:
+            for name, attrs in config["inputs"].items():
                 if not isinstance(name, str):
-                    raise ValueError(f'Input probe "{name}" has invalid name, names must be strings.')
+                    raise ValueError(
+                        f'Input probe "{name}" has invalid name, names must be strings.'
+                    )
 
                 if not isinstance(attrs, int):
                     raise ValueError(f'Input probe "{name}" must have integer width.')
@@ -44,34 +47,42 @@ class IOCore(Elaboratable):
                 if not attrs > 0:
                     raise ValueError(f'Input probe "{name}" must have positive width.')
 
-        if 'outputs' in config:
-            for name, attrs in config['outputs'].items():
+        if "outputs" in config:
+            for name, attrs in config["outputs"].items():
                 if not isinstance(name, str):
-                    raise ValueError(f'Output probe "{name}" has invalid name, names must be strings.')
+                    raise ValueError(
+                        f'Output probe "{name}" has invalid name, names must be strings.'
+                    )
 
                 if not isinstance(attrs, int) and not isinstance(attrs, dict):
                     raise ValueError(f'Unrecognized format for output probe "{name}".')
 
                 if isinstance(attrs, int):
                     if not attrs > 0:
-                        raise ValueError(f'Output probe "{name}" must have positive width.')
+                        raise ValueError(
+                            f'Output probe "{name}" must have positive width.'
+                        )
 
                 if isinstance(attrs, dict):
                     # check that each output probe has only recognized options
-                    valid_options = ['width', 'initial_value']
+                    valid_options = ["width", "initial_value"]
                     for option in attrs:
                         if option not in valid_options:
                             warn(f'Ignoring unrecognized option "{option}" in IO core.')
 
                     # check that widths are appropriate
-                    if 'width' not in attrs:
-                        raise ValueError(f'No width specified for output probe {name}.')
+                    if "width" not in attrs:
+                        raise ValueError(f"No width specified for output probe {name}.")
 
-                    if not isinstance(attrs['width'], int):
-                        raise ValueError(f'Output probe "{name}" must have integer width.')
+                    if not isinstance(attrs["width"], int):
+                        raise ValueError(
+                            f'Output probe "{name}" must have integer width.'
+                        )
 
-                    if not attrs['width'] > 0:
-                        raise ValueError(f'Input probe "{name}" must have positive width.')
+                    if not attrs["width"] > 0:
+                        raise ValueError(
+                            f'Input probe "{name}" must have positive width.'
+                        )
 
     def define_signals(self):
         # Bus Ports
@@ -86,24 +97,28 @@ class IOCore(Elaboratable):
         self.valid_o = Signal()
 
         # Input Probes (and buffers)
-        for name, width in self.config['inputs'].items():
+        for name, width in self.config["inputs"].items():
             setattr(self, name, Signal(width, name=name))
-            setattr(self, name + '_buf', Signal(width, name=name+'_buf'))
+            setattr(self, name + "_buf", Signal(width, name=name + "_buf"))
 
         # Output Probes (and buffers)
-        for name, attrs in self.config['outputs'].items():
+        for name, attrs in self.config["outputs"].items():
             if isinstance(attrs, dict):
-                width = attrs['width']
-                initial_value = attrs['initial_value']
+                width = attrs["width"]
+                initial_value = attrs["initial_value"]
             else:
                 width = attrs
                 initial_value = 0
 
             setattr(self, name, Signal(width, name=name, reset=initial_value))
-            setattr(self, name + '_buf', Signal(width, name=name+'_buf', reset=initial_value))
+            setattr(
+                self,
+                name + "_buf",
+                Signal(width, name=name + "_buf", reset=initial_value),
+            )
 
         # Strobe Register
-        self.strobe = Signal(reset = 0)
+        self.strobe = Signal(reset=0)
 
     def assign_memory(self):
         """
@@ -133,30 +148,29 @@ class IOCore(Elaboratable):
         mmap = {}
 
         # Add strobe register first
-        mmap['strobe'] = dict(addrs=[self.base_addr], signals=[self.strobe])
+        mmap["strobe"] = dict(addrs=[self.base_addr], signals=[self.strobe])
 
         # Add all input and output probes
-        all_probes = {**self.config['inputs'], **self.config['outputs']}
+        all_probes = {**self.config["inputs"], **self.config["outputs"]}
         for name, attrs in all_probes.items():
-
             # Handle output probes that might have initial value specified in addition to width
             if isinstance(attrs, dict):
-                width = attrs['width']
+                width = attrs["width"]
             else:
                 width = attrs
 
             # Assign addresses
-            last_used_addr = list(mmap.values())[-1]['addrs'][-1]
-            addrs = [last_used_addr + 1 + i for i in range(ceil(width/16))]
+            last_used_addr = list(mmap.values())[-1]["addrs"][-1]
+            addrs = [last_used_addr + 1 + i for i in range(ceil(width / 16))]
 
             # Slice signal into 16-bit chunks
-            signal = getattr(self, name + '_buf')
-            signals = [signal[16*i:16*(i+1)] for i in range(ceil(width/16)) ]
+            signal = getattr(self, name + "_buf")
+            signals = [signal[16 * i : 16 * (i + 1)] for i in range(ceil(width / 16))]
 
-            mmap[name + '_buf'] = {'addrs': addrs, 'signals' : signals}
+            mmap[name + "_buf"] = {"addrs": addrs, "signals": signals}
 
         # Compute maximum address used by the core
-        max_addr = list(mmap.values())[-1]['addrs'][-1]
+        max_addr = list(mmap.values())[-1]["addrs"][-1]
         return mmap, max_addr
 
     def elaborate(self, platform):
@@ -171,24 +185,22 @@ class IOCore(Elaboratable):
         # Update buffers from probes
         with m.If(self.strobe):
             # Input buffers
-            for name in self.config['inputs']:
+            for name in self.config["inputs"]:
                 input_probe = getattr(self, name)
-                input_probe_buf = getattr(self, name + '_buf')
+                input_probe_buf = getattr(self, name + "_buf")
                 m.d.sync += input_probe_buf.eq(input_probe)
 
             # Output buffers
-            for name in self.config['outputs']:
+            for name in self.config["outputs"]:
                 output_probe = getattr(self, name)
-                output_probe_buf = getattr(self, name + '_buf')
+                output_probe_buf = getattr(self, name + "_buf")
                 m.d.sync += output_probe.eq(output_probe_buf)
 
         # Handle register reads and writes
-        with m.If(  (self.addr_i >= self.base_addr)):
-            with m.If( (self.addr_o <= self.max_addr)):
-
+        with m.If((self.addr_i >= self.base_addr)):
+            with m.If((self.addr_o <= self.max_addr)):
                 for entry in self.mmap.values():
-                    for addr, signal in zip(entry['addrs'], entry['signals']):
-
+                    for addr, signal in zip(entry["addrs"], entry["signals"]):
                         with m.If(self.rw_i):
                             with m.If(self.addr_i == addr):
                                 m.d.sync += signal.eq(self.data_i)
@@ -201,23 +213,23 @@ class IOCore(Elaboratable):
 
     def set_probe(self, probe_name, value):
         # set value in buffer
-        addrs = self.mmap[probe_name+'_buf']['addrs']
+        addrs = self.mmap[probe_name + "_buf"]["addrs"]
         datas = value_to_words(value, len(addrs))
         self.interface.write(addrs, datas)
 
         # pulse strobe register
-        strobe_addr = self.mmap['strobe']['addrs'][0]
+        strobe_addr = self.mmap["strobe"]["addrs"][0]
         self.interface.write(strobe_addr, 0)
         self.interface.write(strobe_addr, 1)
         self.interface.write(strobe_addr, 0)
 
     def get_probe(self, probe_name):
         # pulse strobe register
-        strobe_addr = self.mmap['strobe']['addrs'][0]
+        strobe_addr = self.mmap["strobe"]["addrs"][0]
         self.interface.write(strobe_addr, 0)
         self.interface.write(strobe_addr, 1)
         self.interface.write(strobe_addr, 0)
 
         # get value from buffer
-        addrs = self.mmap[probe_name+'_buf']['addrs']
+        addrs = self.mmap[probe_name + "_buf"]["addrs"]
         return words_to_value(self.interface.read(addrs))
