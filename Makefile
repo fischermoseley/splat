@@ -1,7 +1,9 @@
-.PHONY: test
+.PHONY: test format clean
 test:
 	pytest
 
-.PHONY: format
 format:
 	black .
+
+clean:
+	git clean -Xdf
