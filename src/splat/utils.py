@@ -25,3 +25,7 @@ def value_to_words(data, n_words):
     # convert to binary, split into 16-bit chunks, and then convert back to list of int
     binary = f"{data:0b}".zfill(n_words * 16)
     return [int(binary[i : i + 16], 2) for i in range(0, 16 * n_words, 16)][::-1]
+
+
+def split_into_chunks(data, chunk_size):
+    return [data[i : i + chunk_size] for i in range(0, len(data), chunk_size)]
