@@ -177,12 +177,10 @@ class UARTInterface(Elaboratable):
         # fancy submoduling and such goes in here
         m = Module()
 
-        uart_rx = UARTReceiver(self.clocks_per_baud)
-        bridge_rx = RecieveBridge()
-        bridge_tx = TransmitBridge()
-        uart_tx = UARTTransmitter(self.clocks_per_baud)
-
-        m.submodules += [uart_rx, bridge_rx, bridge_tx, uart_tx]
+        m.submodules["uart_rx"] = uart_rx = UARTReceiver(self.clocks_per_baud)
+        m.submodules["bridge_rx"] = bridge_rx = RecieveBridge()
+        m.submodules["bridge_tx"] = bridge_tx = TransmitBridge()
+        m.submodules["uart_tx"] = uart_tx = UARTTransmitter(self.clocks_per_baud)
 
         m.d.comb += [
             # UART RX -> Internal Bus
