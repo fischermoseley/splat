@@ -24,7 +24,9 @@ def gen(config_path, output_path):
     from amaranth.back import verilog
 
     with open(output_path, "w") as f:
-        f.write(verilog.convert(s, ports=s.ports, strip_internal_attrs=True))
+        f.write(
+            verilog.convert(s, ports=s.get_top_level_ports(), strip_internal_attrs=True)
+        )
 
 
 def capture(config_path, logic_analyzer_name, export_paths):

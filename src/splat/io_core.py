@@ -9,9 +9,10 @@ class IOCore(Elaboratable):
     more information on the core itself, check out the IO core documentation.
     """
 
-    def __init__(self, config, base_addr):
+    def __init__(self, config, base_addr, interface):
         self.config = config
         self.base_addr = base_addr
+        self.interface = interface
 
         self.check_config(self.config)
         self.define_signals()
@@ -210,6 +211,16 @@ class IOCore(Elaboratable):
                                 m.d.sync += self.data_o.eq(signal)
 
         return m
+
+    def get_top_level_ports(self):
+        ports = []
+        for name in self.config["inputs"].keys():
+            ports.append(getattr(self, name))
+
+        for name in self.config["outputs"].keys():
+            ports.append(getattr(self, name))
+
+        return ports
 
     def set_probe(self, probe_name, value):
         # set value in buffer

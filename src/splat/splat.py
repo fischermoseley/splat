@@ -9,11 +9,8 @@ class Splat(Elaboratable):
         self.config = self.read_config_file(config_path)
         self.check_config()
 
-        self.m = Module()
-        # self.interface = self.get_interface()
-        self.add_cores()
-        self.ports = self.get_top_level_ports()
-        self.connect_cores()
+        self.interface = self.get_interface()
+        self.cores = self.get_cores()
 
     def read_config_file(self, path):
         """
@@ -44,6 +41,14 @@ class Splat(Elaboratable):
         if not len(self.config["cores"]) > 0:
             raise ValueError("Must specify at least one core.")
 
+        for name, attrs in self.config["cores"].items():
+            # make sure core type is specified
+            if "type" not in attrs:
+                raise ValueError(f"No type specified for core {name}.")
+
+            if attrs["type"] not in ["logic_analyzer", "io", "block_memory"]:
+                raise ValueError(f"Unrecognized core type specified for {name}.")
+
     def get_interface(self):
         if "uart" in self.config:
             from .uart import UARTInterface
@@ -61,53 +66,79 @@ class Splat(Elaboratable):
     def get_cores(self):
         """ """
 
-        self.m.submodules.io_core_0 = io_core_0 = IOCore(config, 0)
-        self.m.submodules.io_core_1 = io_core_1 = IOCore(config, 0)
-        return
-
+        cores = {}
         base_addr = 0
-        for name, attrs in config["cores"].items():
-            # make sure core type is specified
-            if "type" not in attrs:
-                raise ValueError(f"No type specified for core {name}.")
+        for name, attrs in self.config["cores"].items():
+            if attrs["type"] == "io":
+                core = IOCore(attrs, base_addr, self.interface)
 
-            # make an instance of the core
-            if attrs["type"] == "logic_analyzer":
-                new_core = LogicAnalyzerCore(attrs, name, base_addr, self.interface)
-
-            elif attrs["type"] == "io":
-                new_core = IOCore(attrs, name, base_addr, self.interface)
+            elif attrs["type"] == "logic_analyzer":
+                core = LogicAnalyzerCore(attrs, name, base_addr, self.interface)
 
             elif attrs["type"] == "block_memory":
-                new_core = BlockMemoryCore(attrs, name, base_addr, self.interface)
-
-            else:
-                raise ValueError(f"Unrecognized core type specified for {name}.")
+                core = BlockMemoryCore(attrs, name, base_addr, self.interface)
 
             # make sure we're not out of address space
-            if new_core.get_max_addr() > (2**16) - 1:
+            if core.max_addr > (2**16) - 1:
                 raise ValueError(
                     f"Ran out of address space to allocate to core {name}."
                 )
 
-            # make the next core's base address start one address after the previous one's
-            base_addr = new_core.get_max_addr() + 1
+            # Make the next core's base address start one address after the previous one's
+            base_addr = core.max_addr + 1
+            cores[name] = core
 
-    def connect_cores(self):
-        self.m.d.comb += [
-            io_core_0.addr_i.eq(self.addr_i),
-            io_core_0.data_i.eq(self.data_i),
-            io_core_0.rw_i.eq(self.rw_i),
-            io_core_0.valid_i.eq(self.valid_i),
-            io_core_1.addr_i.eq(io_core_0.addr_o),
-            io_core_1.data_i.eq(io_core_0.data_o),
-            io_core_1.rw_i.eq(io_core_0.rw_o),
-            io_core_1.valid_i.eq(io_core_0.valid_o),
-            self.addr_o.eq(io_core_1.addr_o),
-            self.data_o.eq(io_core_1.data_o),
-            self.rw_o.eq(io_core_1.rw_o),
-            self.valid_o.eq(io_core_1.valid_o),
-        ]
+        return cores
 
     def elaborate(self, platform):
-        return self.m
+        # make a module object
+        # add all the submodules
+        # connect them together, which consists of:
+        # connect interface to first core
+        # connect cores to each other
+        # connect interface to last core
+
+        m = Module()
+
+        # Add interface as submodule
+        m.submodules["interface"] = self.interface
+
+        # Add all cores as submodules
+        for name, instance in self.cores.items():
+            m.submodules[name] = instance
+
+        # Connect first/last cores to interface output/input respectively
+        core_instances = list(self.cores.values())
+        first_core = core_instances[0]
+        last_core = core_instances[-1]
+        m.d.comb += [
+            first_core.addr_i.eq(self.interface.addr_o),
+            first_core.data_i.eq(self.interface.data_o),
+            first_core.rw_i.eq(self.interface.rw_o),
+            first_core.valid_i.eq(self.interface.valid_o),
+            self.interface.addr_i.eq(last_core.addr_o),
+            self.interface.data_i.eq(last_core.data_o),
+            self.interface.rw_i.eq(last_core.rw_o),
+            self.interface.valid_i.eq(last_core.valid_o),
+        ]
+
+        # Connect output of ith core to input of (i+1)th core
+        for i in range(len(core_instances) - 1):
+            ith_core = core_instances[i]
+            i_plus_oneth_core = core_instances[i + 1]
+
+            m.d.comb += [
+                i_plus_oneth_core.addr_i.eq(ith_core.addr_o),
+                i_plus_oneth_core.data_i.eq(ith_core.data_o),
+                i_plus_oneth_core.rw_i.eq(ith_core.rw_o),
+                i_plus_oneth_core.valid_i.eq(ith_core.valid_o),
+            ]
+
+        return m
+
+    def get_top_level_ports(self):
+        ports = []
+        for name, instance in self.cores.items():
+            ports += instance.get_top_level_ports()
+
+        return ports

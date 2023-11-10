@@ -7,7 +7,7 @@ import yaml
 with open("splat.yaml", "r") as file:
     config = yaml.safe_load(file)["cores"]["io_core"]
 
-io_core = IOCore(config, 0)
+io_core = IOCore(config, base_addr=0, interface=None)
 
 
 def simulate(testbench):

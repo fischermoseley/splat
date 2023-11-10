@@ -1,7 +1,10 @@
-*.vcd
-*.out
 venv/
 splat.egg-info/
 .pytest_cache
-build/
 __pycache__/
+build/
+
+*.v
+*.sv
+*.vcd
+*.out

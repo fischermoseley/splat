@@ -277,111 +277,112 @@ class RecieveBridge(Elaboratable):
         self.WRITE_STATE = 2
 
         # Internal Signals
-        self.buffer = Signal(ArrayLayout(8, 8), reset_less=True)
+        self.buffer = Signal(ArrayLayout(4, 8), reset_less=True)
         self.state = Signal(2, reset=self.IDLE_STATE)
         self.byte_num = Signal(4, reset=0)
+        self.is_eol = Signal()
+        self.is_ascii_hex = Signal()
+        self.from_ascii_hex = Signal(8)
 
-    def from_ascii_hex(self, m, char):
-        """
-        Convert an ASCII character encoding a hex digit to the
-        corresponding numerical value.
-        """
-
+    def drive_ascii_signals(self, m):
         # Decode 0-9
-        with m.If((char >= 0x30) & (char <= 0x39)):
-            yield char - 0x30
+        with m.If((self.data_i >= 0x30) & (self.data_i <= 0x39)):
+            m.d.comb += self.is_ascii_hex.eq(1)
+            m.d.comb += self.from_ascii_hex.eq(self.data_i - 0x30)
 
         # Decode A-F
-        with m.Elif((char >= 0x41) & (char <= 0x46)):
-            yield char - 0x41 + 10
+        with m.Elif((self.data_i >= 0x41) & (self.data_i <= 0x46)):
+            m.d.comb += self.is_ascii_hex.eq(1)
+            m.d.comb += self.from_ascii_hex.eq(self.data_i - 0x41 + 10)
 
         with m.Else():
-            yield 0
+            m.d.comb += self.is_ascii_hex.eq(0)
+            m.d.comb += self.from_ascii_hex.eq(0)
 
-    def is_ascii_hex(self, m, char):
-        """
-        Checks if a byte is an ASCII character that encodes a hex digit.
-        """
-
-        # Decode 0-9
-        with m.If((char >= 0x30) & (char <= 0x39)):
-            yield 1
-
-        # Decode A-F
-        with m.Elif((char >= 0x41) & (char <= 0x46)):
-            yield 1
+        with m.If((self.data_i == ord("\r")) | (self.data_i == ord("\n"))):
+            m.d.comb += self.is_eol.eq(1)
 
         with m.Else():
-            yield 0
+            m.d.comb += self.is_eol.eq(0)
+
+    def drive_output_bus(self, m):
+        with m.If(
+            (self.state == self.READ_STATE) & (self.byte_num == 4) & (self.is_eol)
+        ):
+            m.d.comb += self.addr_o.eq(
+                Cat(self.buffer[3], self.buffer[2], self.buffer[1], self.buffer[0])
+            )
+            m.d.comb += self.data_o.eq(0)
+            m.d.comb += self.valid_o.eq(1)
+            m.d.comb += self.rw_o.eq(0)
+
+        with m.Elif(
+            (self.state == self.WRITE_STATE) & (self.byte_num == 8) & (self.is_eol)
+        ):
+            m.d.comb += self.addr_o.eq(
+                Cat(self.buffer[3], self.buffer[2], self.buffer[1], self.buffer[0])
+            )
+            m.d.comb += self.data_o.eq(
+                Cat(self.buffer[7], self.buffer[6], self.buffer[5], self.buffer[4])
+            )
+            m.d.comb += self.valid_o.eq(1)
+            m.d.comb += self.rw_o.eq(1)
+
+        with m.Else():
+            m.d.comb += self.addr_o.eq(0)
+            m.d.comb += self.data_o.eq(0)
+            m.d.comb += self.rw_o.eq(0)
+            m.d.comb += self.valid_o.eq(0)
+
+    def drive_fsm(self, m):
+        with m.If(self.valid_i):
+            with m.If(self.state == self.IDLE_STATE):
+                m.d.sync += self.byte_num.eq(0)
+
+                with m.If(self.data_i == ord("R")):
+                    m.d.sync += self.state.eq(self.READ_STATE)
+
+                with m.Elif(self.data_i == ord("W")):
+                    m.d.sync += self.state.eq(self.WRITE_STATE)
+
+            with m.If(self.state == self.READ_STATE):
+                # buffer bytes if we don't have enough
+                with m.If(self.byte_num < 4):
+                    # if bytes aren't valid ASCII then return to IDLE state
+                    with m.If(self.is_ascii_hex == 0):
+                        m.d.sync += self.state.eq(self.IDLE_STATE)
+
+                    # otherwise buffer them
+                    with m.Else():
+                        m.d.sync += self.buffer[self.byte_num].eq(self.from_ascii_hex)
+                        m.d.sync += self.byte_num.eq(self.byte_num + 1)
+
+                with m.Else():
+                    m.d.sync += self.state.eq(self.IDLE_STATE)
+
+            with m.If(self.state == self.WRITE_STATE):
+                # buffer bytes if we don't have enough
+                with m.If(self.byte_num < 8):
+                    # if bytes aren't valid ASCII then return to IDLE state
+                    with m.If(self.is_ascii_hex == 0):
+                        m.d.sync += self.state.eq(self.IDLE_STATE)
+
+                    # otherwise buffer them
+                    with m.Else():
+                        m.d.sync += self.buffer[self.byte_num].eq(self.from_ascii_hex)
+                        m.d.sync += self.byte_num.eq(self.byte_num + 1)
+
+                with m.Else():
+                    m.d.sync += self.state.eq(self.IDLE_STATE)
+        pass
 
     def elaborate(self, platform):
         m = Module()
 
-        m.d.sync += self.addr_o.eq(0)
-        m.d.sync += self.data_o.eq(0)
-        m.d.sync += self.rw_o.eq(0)
-        m.d.sync += self.valid_o.eq(0)
+        self.drive_ascii_signals(m)
+        self.drive_output_bus(m)
+        self.drive_fsm(m)
 
-        with m.If(self.state == self.IDLE_STATE):
-            m.d.sync += self.byte_num.eq(0)
-            with m.If(self.valid_i):
-                with m.If(self.data_i == ord("R")):
-                    m.d.sync += self.state.eq(self.READ_STATE)
-
-                with m.If(self.data_i == ord("W")):
-                    m.d.sync += self.state.eq(self.WRITE_STATE)
-
-        with m.Else():
-            with m.If(self.valid_i):
-                # Buffer bytes regardless of if they're good
-                self.byte_num.eq(self.byte_num + 1)
-                self.buffer[self.byte_num].eq(self.data_i)
-
-                # Current transaction specifies a read operation
-                with m.If(self.state == self.READ_STATE):
-                    # Go to IDLE if any bytes don't make sense.
-                    with m.If(self.byte_num < 4):
-                        with m.If(not self.is_ascii_hex(m, self.data_i)):
-                            m.d.sync += self.state.eq(self.IDLE_STATE)
-
-                    with m.Elif(self.byte_num == 4):
-                        m.d.sync += self.state.eq(self.IDLE_STATE)
-
-                        # Put data on teh bus if the last byte looks good
-                        with m.If((self.data_i == 0x0D) | (self.data_i == 0x0A)):
-                            m.d.sync += self.addr_o.eq(
-                                # bleh
-                                0
-                            )
-
-                            m.d.sync += self.data_o.eq(0)
-                            m.d.sync += self.rw_o.eq(0)
-                            m.d.sync += self.valid_o.eq(1)
-
-                # Current transaction specifies a write transaction
-                with m.Elif(self.state == self.WRITE_STATE):
-                    # Go to IDLE if any bytes don't make sense.
-                    with m.If(self.byte_num < 8):
-                        if not self.is_ascii_hex(m, self.data_i):
-                            m.d.sync += self.state.eq(self.IDLE)
-
-                    with m.Elif(self.byte_num == 8):
-                        m.d.sync += self.state.eq(self.IDLE_STATE)
-
-                        # Put data on the bus if the last byte looks good
-                        with m.If((self.data_i == 0x0D) | (self.data_i == 0x0A)):
-                            m.d.sync += self.addr_o.eq(
-                                # ew grossss
-                                0
-                            )
-
-                            m.d.sync += self.data_o.eq(
-                                # ew super gross
-                                0
-                            )
-
-                            m.d.sync += self.rw_o.eq(1)
-                            m.d.sync += self.valid_o.eq(1)
         return m
 
 
