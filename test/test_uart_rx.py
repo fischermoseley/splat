@@ -66,6 +66,9 @@ def test_do_you_run_lol():
         yield
         yield
         yield
-        yield from verify_receive(0xBE, 10)
+        yield from verify_receive(0x00, 10)
+        yield from verify_receive(0xA3, 10)
 
     simulate(testbench, export_vcd=True)
+
+test_do_you_run_lol()
