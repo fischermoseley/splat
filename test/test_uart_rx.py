@@ -52,8 +52,8 @@ def verify_receive(data):
         yield uart_rx.rx.eq(data_bits[bit_index])
         yield
 
-    # if not valid_asserted_before:
-    #     raise ValueError("Failed to assert valid!")
+    if not valid_asserted_before:
+        raise ValueError("Failed to assert valid!")
 
 
 def test_all_possible_bytes():
