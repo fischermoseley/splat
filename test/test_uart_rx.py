@@ -71,4 +71,5 @@ def test_do_you_run_lol():
 
     simulate(testbench, export_vcd=True)
 
+
 test_do_you_run_lol()

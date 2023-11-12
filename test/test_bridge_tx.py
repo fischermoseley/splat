@@ -19,12 +19,17 @@ def simulate(testbench, export_vcd=False):
         with sim.write_vcd("bridge_tx.vcd"):
             sim.run()
 
+
 def verify_encoding(data, bytes):
     """
-    Send a series of bytes to the receive bridge, and verify that the bridge places
-    a read request with the appropriate address on the internal bus.
+    Place a read response on the internal bus, and verify that the sequence of bytes
+    sent from TransmitBridge matches the provided bytestring `bytes`.
+
+    This function also models an ideal UARTTransmitter module, which begins transmitting
+    bytes when `start` is asserted, and reports when it is done by asserting `done`.
     """
 
+    # Place a read response on the internal bus
     yield bridge_tx.data_i.eq(data)
     yield bridge_tx.valid_i.eq(1)
     yield bridge_tx.rw_i.eq(0)
@@ -38,21 +43,15 @@ def verify_encoding(data, bytes):
 
     yield
 
-    # Model the uart_tx module
-    # - by waiting for the module to assert start_o, and then
-    #   taking an arbitrary amount of time to deassert done_i
-
-    bytes_transmitted = b""
+    # Model the UARTTransmitter
+    sent_bytes = b""
     iters = 0
-    while((len(bytes_transmitted) < len(bytes)) and (iters < 15)):
-        # check if start_o is asserted
-        # if so, set done_i to zero, then delay for some amount of time, then set it to oen
-        # delay for
-        iters += 1
 
+    while len(sent_bytes) < len(bytes):
+        # If start_o is asserted, set done_i to zero, then delay, then set it back to one
         if (yield bridge_tx.start_o):
             yield bridge_tx.done_i.eq(0)
-            bytes_transmitted += (yield bridge_tx.data_o).to_bytes(1, 'big')
+            sent_bytes += (yield bridge_tx.data_o).to_bytes(1, "big")
 
             yield bridge_tx.done_i.eq(0)
             for _ in range(10):
@@ -61,11 +60,15 @@ def verify_encoding(data, bytes):
             yield bridge_tx.done_i.eq(1)
             yield
 
+        # Time out if not enough bytes after trying to get bytes 15 times
+        iters += 1
+        if iters > 15:
+            raise ValueError("Timed out waiting for bytes.")
 
-    if bytes_transmitted != bytes:
-        print('oh no')
-        print(bytes)
-        print(bytes_transmitted)
+    # Verify bytes sent from ReceiveBridge match expected_bytes
+    if sent_bytes != bytes:
+        raise ValueError(f"Received {sent_bytes} instead of {bytes}.")
+
 
 def test_some_random_values():
     def testbench():
@@ -74,8 +77,6 @@ def test_some_random_values():
             print(i)
             yield from verify_encoding(i, expected)
 
-    simulate(testbench, export_vcd=False)
-    sample(range(10000000), k=60)
+    simulate(testbench)
 
 
-test_some_random_values()

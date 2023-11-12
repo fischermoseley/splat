@@ -390,16 +390,53 @@ class RecieveBridge(Elaboratable):
 
 class UARTTransmitter(Elaboratable):
     def __init__(self, clocks_per_baud):
+        self.clocks_per_baud = clocks_per_baud
+
+        # Top-Level Ports
         self.data_i = Signal(8)
         self.start_i = Signal()
-        self.done_o = Signal(reset=0)
+        self.done_o = Signal(reset=1)
 
         self.tx = Signal(reset=1)
 
+        # Internal Signals
+        self.baud_counter = Signal(range(clocks_per_baud))
+        self.buffer = Signal(9)
+        self.bit_index = Signal(4)
+
+
     def elaborate(self, platform):
         m = Module()
-        m.d.sync += self.done_o.eq(0)
-        m.d.sync += self.tx.eq(1)
+
+        with m.If( (self.start_i) & (self.done_o) ):
+            m.d.sync += self.baud_counter.eq(self.clocks_per_baud - 1)
+            m.d.sync += self.buffer.eq(Cat(self.data_i, 1))
+            m.d.sync += self.bit_index.eq(0)
+            m.d.sync += self.done_o.eq(0)
+            m.d.sync += self.tx.eq(0)
+
+        with m.Elif(~self.done_o):
+            m.d.sync += self.baud_counter.eq(self.baud_counter - 1)
+            m.d.sync += self.done_o.eq( (self.baud_counter == 1) & (self.bit_index == 9) )
+
+            # A baud period has elapsed
+            with m.If(self.baud_counter == 0):
+                m.d.sync += self.baud_counter.eq(self.clocks_per_baud - 1)
+
+                # Clock out another bit if there are any left
+                with m.If(self.bit_index < 9):
+                    m.d.sync += self.tx.eq(self.buffer.bit_select(self.bit_index, 1))
+                    m.d.sync += self.bit_index.eq(self.bit_index + 1)
+
+                # Byte has been sent, send out next one or go to idle
+                with m.Else():
+                    with m.If(self.start_i):
+                        m.d.sync += self.buffer.eq(Cat(self.data_i, 1))
+                        m.d.sync += self.bit_index.eq(0)
+                        m.d.sync += self.tx.eq(0)
+
+                    with m.Else():
+                        m.d.sync += self.done_o.eq(1)
         return m
 
 
@@ -410,7 +447,7 @@ class TransmitBridge(Elaboratable):
         self.rw_i = Signal()
         self.valid_i = Signal()
 
-        self.data_o = Signal(8, reset = 0)
+        self.data_o = Signal(8, reset=0)
         self.start_o = Signal(1)
         self.done_i = Signal()
 
@@ -427,7 +464,7 @@ class TransmitBridge(Elaboratable):
         m.d.comb += self.start_o.eq(self.busy)
 
         with m.If(~self.busy):
-            with m.If( (self.valid_i) & (~self.rw_i) ):
+            with m.If((self.valid_i) & (~self.rw_i)):
                 m.d.sync += self.busy.eq(1)
                 m.d.sync += self.buffer.eq(self.data_i)
 
@@ -441,12 +478,11 @@ class TransmitBridge(Elaboratable):
                     m.d.sync += self.count.eq(0)
 
                     # Go back to idle, or transmit next message
-                    with m.If( (self.valid_i) & (~self.rw_i) ):
+                    with m.If((self.valid_i) & (~self.rw_i)):
                         m.d.sync += self.buffer.eq(self.data_i)
 
                     with m.Else():
                         m.d.sync += self.busy.eq(0)
-
 
         # define to_ascii_hex
         with m.If(self.n < 10):
@@ -457,7 +493,7 @@ class TransmitBridge(Elaboratable):
         # run the sequence
         with m.If(self.count == 0):
             m.d.comb += self.n.eq(0)
-            m.d.comb += self.data_o.eq(ord('D'))
+            m.d.comb += self.data_o.eq(ord("D"))
 
         with m.Elif(self.count == 1):
             m.d.comb += self.n.eq(self.buffer[12:16])
@@ -477,11 +513,11 @@ class TransmitBridge(Elaboratable):
 
         with m.Elif(self.count == 5):
             m.d.comb += self.n.eq(0)
-            m.d.comb += self.data_o.eq(ord('\r'))
+            m.d.comb += self.data_o.eq(ord("\r"))
 
         with m.Elif(self.count == 6):
             m.d.comb += self.n.eq(0)
-            m.d.comb += self.data_o.eq(ord('\n'))
+            m.d.comb += self.data_o.eq(ord("\n"))
 
         with m.Else():
             m.d.comb += self.n.eq(0)
