@@ -4,7 +4,7 @@ from splat.utils import *
 from random import randint
 import yaml
 
-with open("splat.yaml", "r") as file:
+with open("test/splat.yaml", "r") as file:
     config = yaml.safe_load(file)["cores"]["io_core"]
 
 io_core = IOCore(config, base_addr=0, interface=None)
