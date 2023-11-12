@@ -78,5 +78,3 @@ def test_some_random_values():
             yield from verify_encoding(i, expected)
 
     simulate(testbench)
-
-

@@ -19,6 +19,7 @@ def simulate(testbench, export_vcd=False):
         with sim.write_vcd("uart_tx.vcd"):
             sim.run()
 
+
 def verify_bit_sequence(byte):
     """
     Request a byte to be transmitted, and verify that the sequence of bits is correct.
@@ -59,6 +60,7 @@ def test_all_possible_bytes():
             yield from verify_bit_sequence(i)
 
     simulate(testbench, export_vcd=True)
+
 
 def test_bytes_random_sample():
     def testbench():

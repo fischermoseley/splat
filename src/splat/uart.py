@@ -404,11 +404,10 @@ class UARTTransmitter(Elaboratable):
         self.buffer = Signal(9)
         self.bit_index = Signal(4)
 
-
     def elaborate(self, platform):
         m = Module()
 
-        with m.If( (self.start_i) & (self.done_o) ):
+        with m.If((self.start_i) & (self.done_o)):
             m.d.sync += self.baud_counter.eq(self.clocks_per_baud - 1)
             m.d.sync += self.buffer.eq(Cat(self.data_i, 1))
             m.d.sync += self.bit_index.eq(0)
@@ -417,7 +416,7 @@ class UARTTransmitter(Elaboratable):
 
         with m.Elif(~self.done_o):
             m.d.sync += self.baud_counter.eq(self.baud_counter - 1)
-            m.d.sync += self.done_o.eq( (self.baud_counter == 1) & (self.bit_index == 9) )
+            m.d.sync += self.done_o.eq((self.baud_counter == 1) & (self.bit_index == 9))
 
             # A baud period has elapsed
             with m.If(self.baud_counter == 0):
