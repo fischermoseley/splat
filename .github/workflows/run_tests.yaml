@@ -17,7 +17,7 @@ jobs:
           # https://github.com/pypa/setuptools/issues/3269#issuecomment-1254507377
           export DEB_PYTHON_INSTALL_LAYOUT=deb_system
 
-          python3 -m pip install . [dev]
+          python -m pip install ".[dev]"
 
       - name: Run tests
         run: make test
