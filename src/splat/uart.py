@@ -207,58 +207,57 @@ class UARTReceiver(Elaboratable):
     def __init__(self, clocks_per_baud):
         self.clocks_per_baud = clocks_per_baud
 
-        # Define Signals
+        # Top-Level Ports
         self.rx = Signal()
         self.data_o = Signal(8, reset=0)
         self.valid_o = Signal(1, reset=0)
 
-        self.IDLE = 0
-        self.BIT_ZERO = 1
-        self.STOP_BIT = 9
+        # Internal Signals
+        self.busy = Signal()
+        self.bit_index = Signal(range(10))
+        self.baud_counter = Signal(range(2 * clocks_per_baud))
 
-        self.state = Signal(4, reset=self.IDLE)
-        self.baud_counter = Signal(16, reset=0)
-        self.zero_baud_counter = Signal()
-
-        self.ck_uart = Signal(reset=1)
-        self.q_uart = Signal(reset=1)
+        self.rx_d = Signal()
+        self.rx_q = Signal()
+        self.rx_q_prev = Signal()
 
     def elaborate(self, platform):
         m = Module()
-        m.d.comb += self.zero_baud_counter.eq(self.baud_counter == 0)
 
-        m.d.sync += self.q_uart.eq(self.rx)
-        m.d.sync += self.ck_uart.eq(self.q_uart)
+        # Two Flip-Flop Synchronizer
+        m.d.sync += [
+            self.rx_d.eq(self.rx),
+            self.rx_q.eq(self.rx_d),
+            self.rx_q_prev.eq(self.rx_q),
+        ]
 
-        with m.If(self.state == self.IDLE):
-            m.d.sync += self.state.eq(self.IDLE)
-            m.d.sync += self.baud_counter.eq(0)
+        m.d.sync += self.valid_o.eq(0)
 
-            with m.If(self.ck_uart == 0):
-                m.d.sync += self.state.eq(self.BIT_ZERO)
+        with m.If(~self.busy):
+            with m.If((~self.rx_q) & (self.rx_q_prev)):
+                m.d.sync += self.busy.eq(1)
+                m.d.sync += self.bit_index.eq(8)
                 m.d.sync += self.baud_counter.eq(
-                    self.clocks_per_baud + (self.clocks_per_baud // 2) - 1
+                    self.clocks_per_baud + (self.clocks_per_baud // 2) - 2
                 )
 
-        with m.Elif(self.zero_baud_counter):
-            m.d.sync += self.state.eq(self.state + 1)
-            m.d.sync += self.baud_counter.eq(self.clocks_per_baud - 1)
-
-            with m.If(self.state == self.STOP_BIT):
-                m.d.sync += self.state.eq(self.IDLE)
-                m.d.sync += self.baud_counter.eq(0)
-
         with m.Else():
-            m.d.sync += self.baud_counter.eq(self.baud_counter - 1)
+            with m.If(self.baud_counter == 0):
+                with m.If(self.bit_index == 0):
+                    m.d.sync += self.valid_o.eq(1)
+                    m.d.sync += self.busy.eq(0)
+                    m.d.sync += self.bit_index.eq(0)
+                    m.d.sync += self.baud_counter.eq(0)
 
-        m.d.sync += self.valid_o.eq(
-            self.zero_baud_counter & (self.state == self.STOP_BIT)
-        )
+                with m.Else():
+                    # m.d.sync += self.data_o.eq(Cat(self.rx_q, self.data_o[0:7]))
+                    m.d.sync += self.data_o.eq(Cat(self.data_o[1:8], self.rx_q))
+                    m.d.sync += self.bit_index.eq(self.bit_index - 1)
+                    m.d.sync += self.baud_counter.eq(self.clocks_per_baud - 1)
 
-        with m.If(self.zero_baud_counter == 1):
-            with m.If(self.state != self.STOP_BIT):
-                m.d.sync += self.data_o.eq(Cat(self.ck_uart, self.data_o[0:6]))
-                # m.d.sync += self.data_o[self.state].eq(self.ck_uart)
+            with m.Else():
+                m.d.sync += self.baud_counter.eq(self.baud_counter - 1)
+
         return m
 
 
