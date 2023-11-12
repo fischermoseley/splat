@@ -137,7 +137,8 @@ class Splat(Elaboratable):
         return m
 
     def get_top_level_ports(self):
-        ports = []
+        ports = self.interface.get_top_level_ports()
+
         for name, instance in self.cores.items():
             ports += instance.get_top_level_ports()
 

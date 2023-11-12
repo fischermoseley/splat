@@ -63,6 +63,9 @@ class UARTInterface(Elaboratable):
                 "UART interface is unable to match targeted baudrate with specified clock frequency."
             )
 
+    def get_top_level_ports(self):
+        return [self.rx, self.tx]
+
     def read(self, addrs):
         """
         Read the data stored in a set of address on Manta's internal memory. Addresses
