@@ -6,9 +6,11 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Install Manta from Source
+      - name: Install Splat from Source
         run: |
-          # omitting the following commmands causes the version of setuptools
+          pip install setuptools --upgrade
+
+          # omitting the following commmand causes the version of setuptools
           # used by python to get confused, and it doesn't detect the name
           # or version of the package from pyproject.toml - so the following
           # workaround is used:
