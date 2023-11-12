@@ -6,8 +6,16 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Install from source
-        run: python3 -m pip install .[dev]
+      - name: Install Manta from Source
+        run: |
+          # omitting the following commmands causes the version of setuptools
+          # used by python to get confused, and it doesn't detect the name
+          # or version of the package from pyproject.toml - so the following
+          # workaround is used:
+          # https://github.com/pypa/setuptools/issues/3269#issuecomment-1254507377
+          export DEB_PYTHON_INSTALL_LAYOUT=deb_system
+
+          python3 -m pip install . [dev]
 
       - name: Run tests
         run: make test
