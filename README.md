@@ -9,9 +9,9 @@ Right now this is mostly just a rewrite of [Manta](https://github.com/fischermos
 ### Installation
 If you're on Ubuntu, you'll have to run `export DEB_PYTHON_INSTALL_LAYOUT=deb_system` thanks to a bug in the latest version of `setuptools`.
 
-For a normal installation without all the extra development tools, just run `pip install git+https://github.com/fischermoseley/manta.git`
+For a normal installation without all the extra development tools, just run `pip install git+https://github.com/fischermoseley/splat.git`
 
-However if you're a developer, then you'll need the optional dependencies, installable with `pip install git+https://github.com/fischermoseley/manta.git[dev]`
+However if you're a developer, then you'll need the optional dependencies, installable with `pip install git+https://github.com/fischermoseley/splat.git[dev]`
 
 ### A Quick Example
 
