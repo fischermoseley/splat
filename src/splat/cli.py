@@ -25,7 +25,12 @@ def gen(config_path, output_path):
 
     with open(output_path, "w") as f:
         f.write(
-            verilog.convert(s, ports=s.get_top_level_ports(), strip_internal_attrs=True)
+            verilog.convert(
+                s,
+                name="splat",
+                ports=s.get_top_level_ports(),
+                strip_internal_attrs=True,
+            )
         )
 
 

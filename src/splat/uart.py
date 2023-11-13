@@ -2,6 +2,7 @@ from amaranth import *
 from amaranth.lib.data import ArrayLayout
 from warnings import warn
 from .utils import *
+from serial import Serial
 
 
 class UARTInterface(Elaboratable):
@@ -63,6 +64,55 @@ class UARTInterface(Elaboratable):
                 "UART interface is unable to match targeted baudrate with specified clock frequency."
             )
 
+    def get_serial_device(self):
+        """
+        Return an open PySerial serial device if one exists, otherwise, open one.
+        """
+        if hasattr(self, "serial_device"):
+            return self.serial_device
+
+        else:
+            if self.port != "auto":
+                self.serial_device = Serial(self.port, self.baudrate, timeout=1)
+                return self.serial_device
+
+            else:
+                # Try to autodetect which port to use based on the PID/VID of the device attached.
+                # This looks for the PID/VID of the FT2232, the primary chip used on the icestick
+                # and Digilent dev boards. However, folks will likely want to connect other things
+                # in the future, so in the future we'll probably want to look for other chips as
+                # well.
+
+                # The FT2232 exposes two serial ports - and for whatever reason it usually has the
+                # 0th device used for JTAG programming, and the 1st used for UART. So we'll grab
+                # the 1st.
+
+                import serial.tools.list_ports
+
+                ports = []
+                for port in serial.tools.list_ports.comports():
+                    if (port.vid == 0x403) and (port.pid == 0x6010):
+                        ports.append(port)
+
+                if len(ports) != 2:
+                    raise ValueError(
+                        f"Expected to see two serial ports for FT2232 device, but instead see {len(ports)}."
+                    )
+
+                if ports[0].serial_number != ports[1].serial_number:
+                    raise ValueError(
+                        f"Serial numbers should be the same on both FT2232 ports - probably somehow grabbed ports on two different devices."
+                    )
+
+                if ports[0].location > ports[1].location:
+                    chosen_port = ports[0].device
+
+                else:
+                    chosen_port = ports[1].device
+
+                self.serial_device = Serial(chosen_port, self.baudrate, timeout=1)
+                return self.serial_device
+
     def get_top_level_ports(self):
         return [self.rx, self.tx]
 
@@ -81,7 +131,7 @@ class UARTInterface(Elaboratable):
             raise ValueError("Read address must be an integer or list of integers.")
 
         # Send read requests, and get responses
-        ser = self.get_port()
+        ser = self.get_serial_device()
         addr_chunks = split_into_chunks(addrs, self.chunk_size)
         datas = []
 
@@ -93,9 +143,14 @@ class UARTInterface(Elaboratable):
             # Read responses have the same length as read requests
             bytes_in = ser.read(len(bytes_out))
 
+            if len(bytes_in) != len(bytes_out):
+                raise ValueError(
+                    f"Only got {len(bytes_in)} out of {len(bytes_out)} bytes."
+                )
+
             # Split received bytes into individual responses and decode
             responses = split_into_chunks(bytes_in, 7)
-            data_chunk = self.decode_read_response(responses)
+            data_chunk = [self.decode_read_response(r) for r in responses]
             datas += data_chunk
 
         return datas
@@ -108,7 +163,7 @@ class UARTInterface(Elaboratable):
 
         # Handle a single integer address and data
         if isinstance(addrs, int) and isinstance(datas, int):
-            self.write([addrs], [datas])
+            return self.write([addrs], [datas])
 
         # Make sure address and datas are all integers
         if not isinstance(addrs, list) or not isinstance(datas, list):
@@ -127,7 +182,8 @@ class UARTInterface(Elaboratable):
 
         # Encode addrs and datas into write requests
         bytes_out = "".join([f"W{a:04X}{d:04X}\r\n" for a, d in zip(addrs, datas)])
-        ser = self.get_port()
+        bytes_out = bytes_out.encode("ascii")
+        ser = self.get_serial_device()
         ser.write(bytes_out)
 
     def decode_read_response(self, response_bytes):

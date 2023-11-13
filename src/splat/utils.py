@@ -1,4 +1,5 @@
 from math import ceil
+import os
 
 
 def words_to_value(data):
@@ -29,3 +30,25 @@ def value_to_words(data, n_words):
 
 def split_into_chunks(data, chunk_size):
     return [data[i : i + chunk_size] for i in range(0, len(data), chunk_size)]
+
+
+def xilinx_tools_installed():
+    """
+    Return whether Vivado is installed, by checking if the VIVADO environment variable is set.
+
+    This variable should point to the binary itself, not just the folder it's located in
+    (ie, /tools/Xilinx/Vivado/2023.1/bin/vivado, not /tools/Xilinx/Vivado/2023.1/bin)
+    """
+    return "VIVADO" in os.environ
+
+
+def ice40_tools_installed():
+    """
+    Return whether the ice40 tools are installed, by checking if the YOSYS, NEXTPNR_ICE40,
+    ICEPACK, and ICEPROG environment variables are defined.
+
+    # These variables should point to the binaries themselves, not just the folder it's located in
+    # (ie, /tools/oss-cad-suite/bin/yosys, not /tools/oss-cad-suite/bin/)
+    """
+    tools = ["YOSYS", "NEXTPNR_ICE40", "ICEPACK", "ICEPROG"]
+    return all(tool in os.environ for tool in tools)

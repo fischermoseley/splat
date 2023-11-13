@@ -22,6 +22,6 @@ cores:
         initial_value: 65538
 
 uart:
-  port: "auto"
-  baudrate: 3000000
+  port: "/dev/ttyUSB1"
+  baudrate: 115200
   clock_freq: 100000000

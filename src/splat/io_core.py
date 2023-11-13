@@ -1,5 +1,6 @@
 from amaranth import *
 from warnings import warn
+from .utils import *
 from math import ceil
 
 

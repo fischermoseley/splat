@@ -1,22 +1,15 @@
 from amaranth_boards.test.blinky import *
-from amaranth_boards.arty_a7 import *
-from amaranth_boards.icestick import *
-from amaranth import *
-import os
+from amaranth_boards.nexys4ddr import Nexys4DDRPlatform
+from amaranth_boards.icestick import ICEStickPlatform
+from splat.utils import *
+import pytest
 
 
+@pytest.mark.skipif(not xilinx_tools_installed(), reason="no toolchain installed")
 def test_arty_a7_tools():
-    # Only test the toolchain if the VIVADO environment variable is defined.
-    # This variable should point to the binary itself, not just the folder it's located in
-    # (ie, /tools/Xilinx/Vivado/2023.1/bin/vivado, not /tools/Xilinx/Vivado/2023.1/bin)
-    if "VIVADO" in os.environ:
-        ArtyA7_100Platform().build(Blinky(), do_program=False)
+    Nexys4DDRPlatform().build(Blinky(), do_program=False)
 
 
+@pytest.mark.skipif(not ice40_tools_installed(), reason="no toolchain installed")
 def test_ice40_tools():
-    # Only test the toolchain if the environment variables for the ice40 tools are defined.
-    # These variables should point to the binaries themselves, not just the folder it's located in
-    # (ie, /tools/oss-cad-suite/bin/yosys, not /tools/oss-cad-suite/bin/)
-    tools = ["YOSYS", "NEXTPNR_ICE40", "ICEPACK", "ICEPROG"]
-    if all(tool in os.environ for tool in tools):
-        ICEStickPlatform().build(Blinky(), do_program=False)
+    ICEStickPlatform().build(Blinky(), do_program=False)
