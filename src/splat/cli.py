@@ -3,10 +3,27 @@ from warnings import warn
 from sys import argv
 
 logo = """
-  ╱|、
-(˚ˎ 。7
- |、˜〵
-じしˍ,)ノ ...nyah?
+      .-'\\
+   .-'  `/\\
+.-'      `/\\
+\         `/\\
+ \         `/\\
+  \    _-   `/\       _.--.
+   \    _-   `/`-..--\     )        SPLAT - the Simplest Possible Logic Analysis Tool
+    \    _-   `,','  /    ,')       https://github.com/fischermoseley/splat
+     `-_   -   ` -- ~   ,','
+      `-              ,','          Fischer Moseley - fischerm [at] mit.edu
+       \,--.    ____==-~
+        \   \_-~\\
+         `_-~_.-'
+          \-~
+
+Supported commands:
+    gen      [config_file] [verilog_file]                           generate a verilog file specifying the Manta module from a given configuration file, and save to the provided path
+    capture  [config_file] [LA_core_name] [vcd_file] [mem_file]     start a capture on the specified core, and save the results to a .mem or .vcd file at the provided path(s)
+    playback [config file] [LA_core_name] [verilog_file]            generate a verilog module that plays back a capture from a given logic analyzer core, and save to the provided path
+    ports                                                           list all available serial ports
+    help                                                            display this help screen
 """
 
 
