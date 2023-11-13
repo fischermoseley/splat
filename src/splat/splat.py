@@ -11,6 +11,7 @@ class Splat(Elaboratable):
 
         self.interface = self.get_interface()
         self.cores = self.get_cores()
+        self.add_friendly_core_names()
 
     def read_config_file(self, path):
         """
@@ -89,6 +90,22 @@ class Splat(Elaboratable):
             cores[name] = core
 
         return cores
+
+    def add_friendly_core_names(self):
+        """
+        Add cores to the instance under a friendly name - ie, a core named `my_core` belonging
+        to a Splat instance `s` could be obtained with `s.cores["my_core"]`, but this allows
+        it to be obtained with `s.my_core`. Which is way nicer.
+        """
+
+        for name, instance in self.cores.items():
+            if not hasattr(self, name):
+                setattr(self, name, instance)
+
+            else:
+                raise ValueError(
+                    "Cannot add object to Splat instance - name is already taken!"
+                )
 
     def elaborate(self, platform):
         # make a module object

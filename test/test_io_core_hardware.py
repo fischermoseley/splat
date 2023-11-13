@@ -48,7 +48,7 @@ def verify_output_probe_initial_values(platform):
         outputs = config["cores"]["io_core"]["outputs"]
 
     for name, attrs in outputs.items():
-        actual = s.cores["io_core"].get_probe(name)
+        actual = s.io_core.get_probe(name)
 
         if isinstance(attrs, dict):
             if "initial_value" in attrs:
