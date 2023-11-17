@@ -13,8 +13,8 @@ class ReadOnlyMemoryCore(Elaboratable):
         self.check_config(config)
         self.define_signals()
 
-        self.depth = self.config['depth']
-        self.width = self.config['width']
+        self.depth = self.config["depth"]
+        self.width = self.config["width"]
         self.addr_width = ceil(log2(self.depth))
         self.n_mems = ceil(self.width / 16)
         self.max_addr = self.base_addr + (self.depth * self.n_mems)
@@ -35,7 +35,6 @@ class ReadOnlyMemoryCore(Elaboratable):
 
         if config["depth"] <= 0:
             raise ValueError("Depth of memory core must be positive. ")
-
 
         # Check width is provided and positive
         if "width" not in config:
@@ -78,11 +77,12 @@ class ReadOnlyMemoryCore(Elaboratable):
         m = Module()
 
         # Set up memory
-        self.mem = Memory(width = 16, depth=self.depth, init= [i for i in range(self.depth)])
+        self.mem = Memory(
+            width=16, depth=self.depth, init=[i for i in range(self.depth)]
+        )
         m.submodules["mem"] = self.mem
         read_port = self.mem.read_port()
         m.d.sync += read_port.en.eq(1)
-
 
         # Pipelining
         m.d.sync += self.addr_pipe[0].eq(self.addr_i)
@@ -91,35 +91,34 @@ class ReadOnlyMemoryCore(Elaboratable):
         m.d.sync += self.valid_pipe[0].eq(self.valid_i)
 
         for i in range(1, 3):
-            m.d.sync += self.addr_pipe[i].eq(self.addr_pipe[i-1])
-            m.d.sync += self.data_pipe[i].eq(self.data_pipe[i-1])
-            m.d.sync += self.rw_pipe[i].eq(self.rw_pipe[i-1])
-            m.d.sync += self.valid_pipe[i].eq(self.valid_pipe[i-1])
+            m.d.sync += self.addr_pipe[i].eq(self.addr_pipe[i - 1])
+            m.d.sync += self.data_pipe[i].eq(self.data_pipe[i - 1])
+            m.d.sync += self.rw_pipe[i].eq(self.rw_pipe[i - 1])
+            m.d.sync += self.valid_pipe[i].eq(self.valid_pipe[i - 1])
 
         m.d.sync += self.addr_o.eq(self.addr_pipe[2])
         m.d.sync += self.data_o.eq(self.data_pipe[2])
         m.d.sync += self.rw_o.eq(self.rw_pipe[2])
         m.d.sync += self.valid_o.eq(self.valid_pipe[2])
 
-
         # Perform memory reads/writes
         start_addr = self.base_addr
         stop_addr = start_addr + self.depth
 
         # Throw BRAM operations into the front of the pipeline
-        with m.If( (self.addr_i >= start_addr) & (self.addr_i <= stop_addr) ):
+        with m.If((self.addr_i >= start_addr) & (self.addr_i <= stop_addr)):
             with m.If(~self.rw_i):
                 m.d.sync += read_port.addr.eq(self.addr_i - start_addr)
 
         # Pull BRAM reads from the back of the pipeline
-        with m.If(self.valid_pipe[2] & (self.addr_pipe[2] >= start_addr) & (self.addr_pipe[2] <= stop_addr)):
+        with m.If(
+            self.valid_pipe[2]
+            & (self.addr_pipe[2] >= start_addr)
+            & (self.addr_pipe[2] <= stop_addr)
+        ):
             m.d.sync += self.data_o.eq(read_port.data)
 
         return m
-
-
-
-
 
         # for i, mem in self.mems:
         #     m.submodules[f"mem_{i}"] = mem
@@ -144,13 +143,6 @@ class ReadOnlyMemoryCore(Elaboratable):
         # self.user_dout
         # self.user_we
 
-
-
-
-
-
-
-
     # I'm not sure either of these are correct - shouldn't we be reading from more than one
     # address if we're reading from something that's greater than 16-bits wide?
 
@@ -167,5 +159,3 @@ class ReadOnlyMemoryCore(Elaboratable):
 
     #     else:
     #         self.interface.read(addrs - self.base_addr)
-
-

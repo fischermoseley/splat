@@ -4,8 +4,10 @@ import os
 
 
 def words_to_value(data):
-    """Takes a list of integers, interprets them as 16-bit integers, and
-    concatenates them together in little-endian order."""
+    """
+    Takes a list of integers, interprets them as 16-bit integers, and
+    concatenates them together in little-endian order.
+    """
 
     for d in data:
         if d > 0 and d > 2**16 - 1:
@@ -18,8 +20,10 @@ def words_to_value(data):
 
 
 def value_to_words(data, n_words):
-    """Takes a integer, interprets it as a set of 16-bit integers
-    concatenated together, and splits it into a list of 16-bit numbers"""
+    """
+    Takes a integer, interprets it as a set of 16-bit integers
+    concatenated together, and splits it into a list of 16-bit numbers.
+    """
 
     if not isinstance(data, int) or data < 0:
         raise ValueError("Behavior is only defined for nonnegative integers.")
@@ -30,10 +34,21 @@ def value_to_words(data, n_words):
 
 
 def split_into_chunks(data, chunk_size):
+    """
+    Split a list into a list of lists, where each sublist has length `chunk_size`.
+    If the list can't be evenly divided into chunks, then the last entry in the
+    returned list will have length less than `chunk_size`.
+    """
+
     return [data[i : i + chunk_size] for i in range(0, len(data), chunk_size)]
 
 
 def simulate(top, testbench, vcd_path=None):
+    """
+    Run a behavior simulation using Amaranth's built-in simulator `pysim`. Takes
+    the top-level module to simulate, the testbench process to run, and an optional
+    path to export a VCD file to.
+    """
     sim = Simulator(top)
     sim.add_clock(1e-6)  # 1 MHz
     sim.add_sync_process(testbench)
@@ -45,7 +60,19 @@ def simulate(top, testbench, vcd_path=None):
         with sim.write_vcd(vcd_path):
             sim.run()
 
+
 def verify_register(module, addr, expected_data):
+    """
+    Read the contents of a register out over a module's bus connection, and verify
+    that it contains the expected data.
+
+    Unfortunately because Amaranth uses generator functions to define processes,
+    this must be a generator function and thus cannot return a value - it must
+    yield the next timestep. This means that the comparision with the expected
+    value must occur inside this function and not somewhere else, it's not
+    possible to return a value from here, and compare it in the calling function.
+    """
+
     # place read transaction on the bus
     yield module.addr_i.eq(addr)
     yield module.data_i.eq(0)
@@ -64,7 +91,13 @@ def verify_register(module, addr, expected_data):
     if data != expected_data:
         raise ValueError(f"Read from {addr} yielded {data} instead of {expected_data}")
 
+
 def write_register(module, addr, data):
+    """
+    Write to a register over a module's bus connection, placing the contents of `data`
+    at `addr`.
+    """
+
     yield module.addr_i.eq(addr)
     yield module.data_i.eq(data)
     yield module.rw_i.eq(1)

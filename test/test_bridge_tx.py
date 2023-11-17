@@ -6,6 +6,7 @@ from random import randint, sample
 
 bridge_tx = TransmitBridge()
 
+
 def verify_encoding(data, bytes):
     """
     Place a read response on the internal bus, and verify that the sequence of bytes
