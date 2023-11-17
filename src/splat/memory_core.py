@@ -63,18 +63,21 @@ class ReadOnlyMemoryCore(Elaboratable):
         self.valid_o = Signal(1, reset=0)
 
     def elaborate(self, platform):
-        # ok so we just instantiate n_brams worth of memories, with the appropriate widths
-        # and then we put them all on the bus?
-
         m = Module()
 
         # Set up memory
-        self.mem = Memory(
-            width=16, depth=self.depth, init=[i for i in range(self.depth)]
-        )
+        self.mem = Memory(width=16, depth=self.depth)
         m.submodules["mem"] = self.mem
+
+        # Set up read port
         read_port = self.mem.read_port()
-        m.d.sync += read_port.en.eq(1)
+        m.d.comb += read_port.en.eq(1)
+
+        # Set up write port
+        write_port = self.mem.write_port()
+        self.user_addr = write_port.addr
+        self.user_data = write_port.data
+        self.user_we = write_port.en
 
         # Pipelining
         m.d.sync += self.addr_pipe[0].eq(self.addr_i)
@@ -99,19 +102,19 @@ class ReadOnlyMemoryCore(Elaboratable):
 
         # Throw BRAM operations into the front of the pipeline
         with m.If(
-            (self.valid_i) &
-            (~self.rw_i) &
-            (self.addr_i >= start_addr) &
-            (self.addr_i <= stop_addr)
+            (self.valid_i)
+            & (~self.rw_i)
+            & (self.addr_i >= start_addr)
+            & (self.addr_i <= stop_addr)
         ):
             m.d.sync += read_port.addr.eq(self.addr_i - start_addr)
 
         # Pull BRAM reads from the back of the pipeline
         with m.If(
-            (self.valid_pipe[2]) &
-            (~self.rw_pipe[2]) &
-            (self.addr_pipe[2] >= start_addr) &
-            (self.addr_pipe[2] <= stop_addr)
+            (self.valid_pipe[2])
+            & (~self.rw_pipe[2])
+            & (self.addr_pipe[2] >= start_addr)
+            & (self.addr_pipe[2] <= stop_addr)
         ):
             m.d.sync += self.data_o.eq(read_port.data)
 
