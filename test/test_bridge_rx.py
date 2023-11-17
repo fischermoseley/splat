@@ -6,19 +6,6 @@ from splat.utils import *
 bridge_rx = RecieveBridge()
 
 
-def simulate(testbench, export_vcd=False):
-    sim = Simulator(bridge_rx)
-    sim.add_clock(1e-6)  # 1 MHz
-    sim.add_sync_process(testbench)
-
-    if not export_vcd:
-        sim.run()
-
-    else:
-        with sim.write_vcd("bridge_rx.vcd"):
-            sim.run()
-
-
 def verify_read_decoding(bytes, addr):
     """
     Send a series of bytes to the receive bridge, and verify that the bridge places
@@ -107,7 +94,7 @@ def test_read_decode():
         yield from verify_read_decoding(b"R5678\n", 0x5678)
         yield from verify_read_decoding(b"R9ABC\r", 0x9ABC)
 
-    simulate(testbench)
+    simulate(bridge_rx, testbench)
 
 
 def test_write_decode():
@@ -117,7 +104,7 @@ def test_write_decode():
         yield from verify_write_decoding(b"WDEADBEEF\r", 0xDEAD, 0xBEEF)
         yield from verify_write_decoding(b"WB0BACAFE\n", 0xB0BA, 0xCAFE)
 
-    simulate(testbench)
+    simulate(bridge_rx, testbench)
 
 
 def test_no_decode():
@@ -130,4 +117,4 @@ def test_no_decode():
         yield from verify_bad_bytes(b"WABC[]()##*@\r\n")
         yield from verify_bad_bytes(b"R\r\n")
 
-    simulate(testbench)
+    simulate(bridge_rx, testbench)

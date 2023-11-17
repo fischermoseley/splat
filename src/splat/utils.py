@@ -1,3 +1,4 @@
+from amaranth.sim import Simulator
 from math import ceil
 import os
 
@@ -30,6 +31,47 @@ def value_to_words(data, n_words):
 
 def split_into_chunks(data, chunk_size):
     return [data[i : i + chunk_size] for i in range(0, len(data), chunk_size)]
+
+
+def simulate(top, testbench, vcd_path=None):
+    sim = Simulator(top)
+    sim.add_clock(1e-6)  # 1 MHz
+    sim.add_sync_process(testbench)
+
+    if vcd_path is None:
+        sim.run()
+
+    else:
+        with sim.write_vcd(vcd_path):
+            sim.run()
+
+def verify_register(module, addr, expected_data):
+    # place read transaction on the bus
+    yield module.addr_i.eq(addr)
+    yield module.data_i.eq(0)
+    yield module.rw_i.eq(0)
+    yield module.valid_i.eq(1)
+    yield
+    yield module.addr_i.eq(0)
+    yield module.valid_i.eq(0)
+
+    # wait for output to be valid
+    while not (yield module.valid_o):
+        yield
+
+    # compare returned value with expected
+    data = yield (module.data_o)
+    if data != expected_data:
+        raise ValueError(f"Read from {addr} yielded {data} instead of {expected_data}")
+
+def write_register(module, addr, data):
+    yield module.addr_i.eq(addr)
+    yield module.data_i.eq(data)
+    yield module.rw_i.eq(1)
+    yield module.valid_i.eq(1)
+    yield
+    yield module.valid_i.eq(0)
+    yield
 
 
 def xilinx_tools_installed():

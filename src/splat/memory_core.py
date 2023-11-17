@@ -1,4 +1,5 @@
 from amaranth import *
+from amaranth.lib.data import ArrayLayout
 from warnings import warn
 from math import ceil, log2
 
@@ -57,10 +58,18 @@ class ReadOnlyMemoryCore(Elaboratable):
         self.rw_o = Signal(1, reset=0)
         self.valid_o = Signal(1, reset=0)
 
-        self.addr_pipe = Signal(16)
-        self.data_pipe = Signal(16)
-        self.rw_pipe = Signal(1)
-        self.valid_pipe = Signal(1)
+        # self.addr_pipe = ArrayLayout(16, 3)
+        # self.data_pipe = ArrayLayout(16, 3)
+        # self.rw_pipe = ArrayLayout(1, 3)
+        # self.valid_pipe = ArrayLayout(1, 3)
+
+        self.addr_pipe = [Signal(16) for _ in range(3)]
+        self.data_pipe = [Signal(16) for _ in range(3)]
+        self.rw_pipe = [Signal(1) for _ in range(3)]
+        self.valid_pipe = [Signal(1) for _ in range(3)]
+
+    def in_range(addr, start, stop):
+        return (addr >= start) & (addr <= stop)
 
     def elaborate(self, platform):
         # ok so we just instantiate n_brams worth of memories, with the appropriate widths
@@ -68,33 +77,43 @@ class ReadOnlyMemoryCore(Elaboratable):
 
         m = Module()
 
-        # self.mems = [Memory(width = 16, depth = self.depth) for _ in self.n_mems]
-        vals = [i%(2**16 - 1) for i in range(self.depth)]
-        self.mem = Memory(width = 16, depth=self.depth, init=vals)
+        # Set up memory
+        self.mem = Memory(width = 16, depth=self.depth, init= [i for i in range(self.depth)])
         m.submodules["mem"] = self.mem
-
         read_port = self.mem.read_port()
-        m.d.comb += read_port.en.eq(1)
+        m.d.sync += read_port.en.eq(1)
 
+
+        # Pipelining
+        m.d.sync += self.addr_pipe[0].eq(self.addr_i)
+        m.d.sync += self.data_pipe[0].eq(self.data_i)
+        m.d.sync += self.rw_pipe[0].eq(self.rw_i)
+        m.d.sync += self.valid_pipe[0].eq(self.valid_i)
+
+        for i in range(1, 3):
+            m.d.sync += self.addr_pipe[i].eq(self.addr_pipe[i-1])
+            m.d.sync += self.data_pipe[i].eq(self.data_pipe[i-1])
+            m.d.sync += self.rw_pipe[i].eq(self.rw_pipe[i-1])
+            m.d.sync += self.valid_pipe[i].eq(self.valid_pipe[i-1])
+
+        m.d.sync += self.addr_o.eq(self.addr_pipe[2])
+        m.d.sync += self.data_o.eq(self.data_pipe[2])
+        m.d.sync += self.rw_o.eq(self.rw_pipe[2])
+        m.d.sync += self.valid_o.eq(self.valid_pipe[2])
+
+
+        # Perform memory reads/writes
         start_addr = self.base_addr
         stop_addr = start_addr + self.depth
 
-        # pipelining
-        m.d.sync += self.addr_pipe.eq(self.addr_i)
-        m.d.sync += self.data_pipe.eq(self.data_i)
-        m.d.sync += self.rw_pipe.eq(self.rw_i)
-        m.d.sync += self.valid_pipe.eq(self.valid_i)
-
-        m.d.sync += self.addr_o.eq(self.addr_pipe)
-        m.d.sync += self.data_o.eq(self.data_pipe)
-        m.d.sync += self.rw_o.eq(self.rw_pipe)
-        m.d.sync += self.valid_o.eq(self.valid_pipe)
-
-
+        # Throw BRAM operations into the front of the pipeline
         with m.If( (self.addr_i >= start_addr) & (self.addr_i <= stop_addr) ):
             with m.If(~self.rw_i):
                 m.d.sync += read_port.addr.eq(self.addr_i - start_addr)
-                m.d.sync += self.data_o.eq(read_port.data)
+
+        # Pull BRAM reads from the back of the pipeline
+        with m.If(self.valid_pipe[2] & (self.addr_pipe[2] >= start_addr) & (self.addr_pipe[2] <= stop_addr)):
+            m.d.sync += self.data_o.eq(read_port.data)
 
         return m
 

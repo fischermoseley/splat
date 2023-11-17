@@ -7,19 +7,6 @@ from random import sample
 uart_rx = UARTReceiver(clocks_per_baud=10)
 
 
-def simulate(testbench, export_vcd=False):
-    sim = Simulator(uart_rx)
-    sim.add_clock(1e-6)  # 1 MHz
-    sim.add_sync_process(testbench)
-
-    if not export_vcd:
-        sim.run()
-
-    else:
-        with sim.write_vcd("uart_rx.vcd"):
-            sim.run()
-
-
 def verify_receive(data):
     # 8N1 serial, LSB sent first
     data_bits = "0" + f"{data:08b}"[::-1] + "1"
@@ -64,7 +51,7 @@ def test_all_possible_bytes():
         for i in range(0xFF):
             yield from verify_receive(i)
 
-    simulate(testbench)
+    simulate(uart_rx, testbench)
 
 
 def test_bytes_random_sample():
@@ -75,4 +62,4 @@ def test_bytes_random_sample():
         for i in sample(range(0xFF), k=0xFF):
             yield from verify_receive(i)
 
-    simulate(testbench)
+    simulate(uart_rx, testbench)

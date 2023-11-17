@@ -10,50 +10,11 @@ with open("test/splat.yaml", "r") as file:
 io_core = IOCore(config, base_addr=0, interface=None)
 
 
-def simulate(testbench):
-    sim = Simulator(io_core)
-    sim.add_clock(1e-6)  # 1 MHz
-    sim.add_sync_process(testbench)
-    sim.run()
-
-
-def verify_register(addr, expected_data):
-    # place read transaction on the bus
-    yield io_core.addr_i.eq(addr)
-    yield io_core.data_i.eq(0)
-    yield io_core.rw_i.eq(0)
-    yield io_core.valid_i.eq(1)
-    yield
-    yield io_core.valid_i.eq(0)
-
-    # wait for output to be valid
-    while not (yield io_core.valid_o):
-        yield
-
-    # compare returned value with expected
-    data = yield (io_core.data_o)
-    if data != expected_data:
-        raise ValueError(f"Read from {addr} yielded {data} instead of {expected_data}")
-
-    else:
-        print(f"Read from {addr} yielded {data} as expected")
-
-
-def write_register(addr, data):
-    yield io_core.addr_i.eq(addr)
-    yield io_core.data_i.eq(data)
-    yield io_core.rw_i.eq(1)
-    yield io_core.valid_i.eq(1)
-    yield
-    yield io_core.valid_i.eq(0)
-    yield
-
-
 def pulse_strobe_register():
     strobe_addr = io_core.mmap["strobe"]["addrs"][0]
-    yield from write_register(strobe_addr, 0)
-    yield from write_register(strobe_addr, 1)
-    yield from write_register(strobe_addr, 0)
+    yield from write_register(io_core, strobe_addr, 0)
+    yield from write_register(io_core, strobe_addr, 1)
+    yield from write_register(io_core, strobe_addr, 0)
 
 
 def test_output_probe_initial_values():
@@ -76,7 +37,7 @@ def test_output_probe_initial_values():
             else:
                 print(f"Output probe {name} initialized to {value} as expected.")
 
-    simulate(testbench)
+    simulate(io_core, testbench)
 
 
 def test_input_probe_buffer_initial_value():
@@ -86,9 +47,9 @@ def test_input_probe_buffer_initial_value():
             addrs = io_core.mmap[name + "_buf"]["addrs"]
 
             for addr in addrs:
-                yield from verify_register(addr, 0)
+                yield from verify_register(io_core, addr, 0)
 
-    simulate(testbench)
+    simulate(io_core, testbench)
 
 
 def test_output_probe_buffer_initial_value():
@@ -103,9 +64,9 @@ def test_output_probe_buffer_initial_value():
                     datas = value_to_words(attrs["initial_value"], len(addrs))
 
             for addr, data in zip(addrs, datas):
-                yield from verify_register(addr, data)
+                yield from verify_register(io_core, addr, data)
 
-    simulate(testbench)
+    simulate(io_core, testbench)
 
 
 def test_output_probes_are_writeable():
@@ -122,13 +83,13 @@ def test_output_probes_are_writeable():
 
             # write value to registers
             for addr, data in zip(addrs, datas):
-                yield from write_register(addr, data)
+                yield from write_register(io_core, addr, data)
 
             # read value back from registers
             for addr, data in zip(addrs, datas):
-                yield from verify_register(addr, data)
+                yield from verify_register(io_core, addr, data)
 
-    simulate(testbench)
+    simulate(io_core, testbench)
 
 
 def test_output_probes_update():
@@ -145,7 +106,7 @@ def test_output_probes_update():
 
             # write value to registers
             for addr, data in zip(addrs, datas):
-                yield from write_register(addr, data)
+                yield from write_register(io_core, addr, data)
 
             # pulse strobe register
             yield from pulse_strobe_register()
@@ -162,7 +123,7 @@ def test_output_probes_update():
             else:
                 print(f"Output probe {name} took value {value} after pulsing strobe.")
 
-    simulate(testbench)
+    simulate(io_core, testbench)
 
 
 def test_input_probes_update():
@@ -182,6 +143,6 @@ def test_input_probes_update():
             datas = value_to_words(test_value, len(addrs))
 
             for addr, data in zip(addrs, datas):
-                yield from verify_register(addr, data)
+                yield from verify_register(io_core, addr, data)
 
-    simulate(testbench)
+    simulate(io_core, testbench)

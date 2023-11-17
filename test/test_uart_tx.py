@@ -7,19 +7,6 @@ from random import sample
 uart_tx = UARTTransmitter(clocks_per_baud=10)
 
 
-def simulate(testbench, export_vcd=False):
-    sim = Simulator(uart_tx)
-    sim.add_clock(1e-6)  # 1 MHz
-    sim.add_sync_process(testbench)
-
-    if not export_vcd:
-        sim.run()
-
-    else:
-        with sim.write_vcd("uart_tx.vcd"):
-            sim.run()
-
-
 def verify_bit_sequence(byte):
     """
     Request a byte to be transmitted, and verify that the sequence of bits is correct.
@@ -59,7 +46,7 @@ def test_all_possible_bytes():
         for i in range(0xFF):
             yield from verify_bit_sequence(i)
 
-    simulate(testbench, export_vcd=True)
+    simulate(uart_tx, testbench)
 
 
 def test_bytes_random_sample():
@@ -67,4 +54,4 @@ def test_bytes_random_sample():
         for i in sample(range(0xFF), k=0xFF):
             yield from verify_bit_sequence(i)
 
-    simulate(testbench, export_vcd=True)
+    simulate(uart_tx, testbench)

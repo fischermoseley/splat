@@ -6,20 +6,6 @@ from random import randint, sample
 
 bridge_tx = TransmitBridge()
 
-
-def simulate(testbench, export_vcd=False):
-    sim = Simulator(bridge_tx)
-    sim.add_clock(1e-6)  # 1 MHz
-    sim.add_sync_process(testbench)
-
-    if not export_vcd:
-        sim.run()
-
-    else:
-        with sim.write_vcd("bridge_tx.vcd"):
-            sim.run()
-
-
 def verify_encoding(data, bytes):
     """
     Place a read response on the internal bus, and verify that the sequence of bytes
@@ -77,4 +63,4 @@ def test_some_random_values():
             print(i)
             yield from verify_encoding(i, expected)
 
-    simulate(testbench)
+    simulate(bridge_tx, testbench)
