@@ -52,23 +52,15 @@ class ReadOnlyMemoryCore(Elaboratable):
         self.rw_i = Signal(1)
         self.valid_i = Signal(1)
 
-        self.addr_o = Signal(16, reset=0)
-        self.data_o = Signal(16, reset=0)
-        self.rw_o = Signal(1, reset=0)
-        self.valid_o = Signal(1, reset=0)
-
-        # self.addr_pipe = ArrayLayout(16, 3)
-        # self.data_pipe = ArrayLayout(16, 3)
-        # self.rw_pipe = ArrayLayout(1, 3)
-        # self.valid_pipe = ArrayLayout(1, 3)
-
         self.addr_pipe = [Signal(16) for _ in range(3)]
         self.data_pipe = [Signal(16) for _ in range(3)]
         self.rw_pipe = [Signal(1) for _ in range(3)]
         self.valid_pipe = [Signal(1) for _ in range(3)]
 
-    def in_range(addr, start, stop):
-        return (addr >= start) & (addr <= stop)
+        self.addr_o = Signal(16, reset=0)
+        self.data_o = Signal(16, reset=0)
+        self.rw_o = Signal(1, reset=0)
+        self.valid_o = Signal(1, reset=0)
 
     def elaborate(self, platform):
         # ok so we just instantiate n_brams worth of memories, with the appropriate widths
@@ -106,15 +98,20 @@ class ReadOnlyMemoryCore(Elaboratable):
         stop_addr = start_addr + self.depth
 
         # Throw BRAM operations into the front of the pipeline
-        with m.If((self.addr_i >= start_addr) & (self.addr_i <= stop_addr)):
-            with m.If(~self.rw_i):
-                m.d.sync += read_port.addr.eq(self.addr_i - start_addr)
+        with m.If(
+            (self.valid_i) &
+            (~self.rw_i) &
+            (self.addr_i >= start_addr) &
+            (self.addr_i <= stop_addr)
+        ):
+            m.d.sync += read_port.addr.eq(self.addr_i - start_addr)
 
         # Pull BRAM reads from the back of the pipeline
         with m.If(
-            self.valid_pipe[2]
-            & (self.addr_pipe[2] >= start_addr)
-            & (self.addr_pipe[2] <= stop_addr)
+            (self.valid_pipe[2]) &
+            (~self.rw_pipe[2]) &
+            (self.addr_pipe[2] >= start_addr) &
+            (self.addr_pipe[2] <= stop_addr)
         ):
             m.d.sync += self.data_o.eq(read_port.data)
 

@@ -21,26 +21,3 @@ def test_bus_read_random():
 
     simulate(mem_core, testbench, vcd_path="mem_core.vcd")
 
-
-# def test_bus_read_write():
-#     def testbench():
-#         for i in range(config['depth']):
-#             yield mem_core.addr_i.eq(5)
-#             yield mem_core.data_i.eq(0)
-#             yield mem_core.rw_i.eq(0)
-#             yield mem_core.valid_i.eq(1)
-
-#             for _ in range(10):
-#                 print((yield mem_core.addr_pipe[0]))
-#                 yield
-#             yield
-#             yield
-#             yield
-#             yield
-#             yield
-#             yield
-#             yield
-#             yield
-#             break
-
-#     simulate(mem_core, testbench, vcd_path="mem_core.vcd")
