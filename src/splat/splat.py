@@ -1,6 +1,10 @@
 from amaranth import *
 from warnings import warn
+from .uart import UARTInterface
+
+# from .ethernet import EthernetInterface
 from .io_core import IOCore
+from .memory_core import ReadOnlyMemoryCore
 
 
 class Splat(Elaboratable):
@@ -47,18 +51,14 @@ class Splat(Elaboratable):
             if "type" not in attrs:
                 raise ValueError(f"No type specified for core {name}.")
 
-            if attrs["type"] not in ["logic_analyzer", "io", "block_memory"]:
+            if attrs["type"] not in ["logic_analyzer", "io", "memory_read_only"]:
                 raise ValueError(f"Unrecognized core type specified for {name}.")
 
     def get_interface(self):
         if "uart" in self.config:
-            from .uart import UARTInterface
-
             return UARTInterface(self.config["uart"])
 
         elif "ethernet" in self.config:
-            from .ethernet import EthernetInterface
-
             return EthernetInterface(self.config["ethernet"])
 
         else:
@@ -74,10 +74,10 @@ class Splat(Elaboratable):
                 core = IOCore(attrs, base_addr, self.interface)
 
             elif attrs["type"] == "logic_analyzer":
-                core = LogicAnalyzerCore(attrs, name, base_addr, self.interface)
+                core = LogicAnalyzerCore(attrs, base_addr, self.interface)
 
-            elif attrs["type"] == "block_memory":
-                core = BlockMemoryCore(attrs, name, base_addr, self.interface)
+            elif attrs["type"] == "memory_read_only":
+                core = ReadOnlyMemoryCore(attrs, base_addr, self.interface)
 
             # make sure we're not out of address space
             if core.max_addr > (2**16) - 1:

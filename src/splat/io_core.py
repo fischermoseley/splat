@@ -21,7 +21,7 @@ class IOCore(Elaboratable):
 
     def check_config(self, config):
         # make sure ports are defined
-        if "inputs" not in config or "outputs" not in config:
+        if "inputs" not in config and "outputs" not in config:
             raise ValueError("No input or output ports specified.")
 
         # check for unrecognized options
@@ -99,25 +99,27 @@ class IOCore(Elaboratable):
         self.valid_o = Signal()
 
         # Input Probes (and buffers)
-        for name, width in self.config["inputs"].items():
-            setattr(self, name, Signal(width, name=name))
-            setattr(self, name + "_buf", Signal(width, name=name + "_buf"))
+        if "inputs" in self.config:
+            for name, width in self.config["inputs"].items():
+                setattr(self, name, Signal(width, name=name))
+                setattr(self, name + "_buf", Signal(width, name=name + "_buf"))
 
         # Output Probes (and buffers)
-        for name, attrs in self.config["outputs"].items():
-            if isinstance(attrs, dict):
-                width = attrs["width"]
-                initial_value = attrs["initial_value"]
-            else:
-                width = attrs
-                initial_value = 0
+        if "outputs" in self.config:
+            for name, attrs in self.config["outputs"].items():
+                if isinstance(attrs, dict):
+                    width = attrs["width"]
+                    initial_value = attrs["initial_value"]
+                else:
+                    width = attrs
+                    initial_value = 0
 
-            setattr(self, name, Signal(width, name=name, reset=initial_value))
-            setattr(
-                self,
-                name + "_buf",
-                Signal(width, name=name + "_buf", reset=initial_value),
-            )
+                setattr(self, name, Signal(width, name=name, reset=initial_value))
+                setattr(
+                    self,
+                    name + "_buf",
+                    Signal(width, name=name + "_buf", reset=initial_value),
+                )
 
         # Strobe Register
         self.strobe = Signal(reset=0)
@@ -153,7 +155,13 @@ class IOCore(Elaboratable):
         mmap["strobe"] = dict(addrs=[self.base_addr], signals=[self.strobe])
 
         # Add all input and output probes
-        all_probes = {**self.config["inputs"], **self.config["outputs"]}
+        all_probes = {}
+        if "inputs" in self.config:
+            all_probes = {**all_probes, **self.config["inputs"]}
+
+        if "outputs" in self.config:
+            all_probes = {**all_probes, **self.config["outputs"]}
+
         for name, attrs in all_probes.items():
             # Handle output probes that might have initial value specified in addition to width
             if isinstance(attrs, dict):
@@ -187,16 +195,18 @@ class IOCore(Elaboratable):
         # Update buffers from probes
         with m.If(self.strobe):
             # Input buffers
-            for name in self.config["inputs"]:
-                input_probe = getattr(self, name)
-                input_probe_buf = getattr(self, name + "_buf")
-                m.d.sync += input_probe_buf.eq(input_probe)
+            if "inputs" in self.config:
+                for name in self.config["inputs"]:
+                    input_probe = getattr(self, name)
+                    input_probe_buf = getattr(self, name + "_buf")
+                    m.d.sync += input_probe_buf.eq(input_probe)
 
             # Output buffers
-            for name in self.config["outputs"]:
-                output_probe = getattr(self, name)
-                output_probe_buf = getattr(self, name + "_buf")
-                m.d.sync += output_probe.eq(output_probe_buf)
+            if "outputs" in self.config:
+                for name in self.config["outputs"]:
+                    output_probe = getattr(self, name)
+                    output_probe_buf = getattr(self, name + "_buf")
+                    m.d.sync += output_probe.eq(output_probe_buf)
 
         # Handle register reads and writes
         with m.If((self.addr_i >= self.base_addr)):
