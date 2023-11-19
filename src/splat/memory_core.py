@@ -1,8 +1,7 @@
 from amaranth import *
 from amaranth.lib.data import ArrayLayout
 from warnings import warn
-from math import ceil, log2
-
+from .utils import *
 
 class ReadOnlyMemoryCore(Elaboratable):
     def __init__(self, config, base_addr, interface):
@@ -152,3 +151,35 @@ class ReadOnlyMemoryCore(Elaboratable):
         self.handle_read_ports(m)
         self.handle_write_ports(m)
         return m
+
+    def read_from_user_addr(self, addrs, datas):
+        """
+        Read the memory stored at the provided address, as seen from the user side.
+        """
+
+        # Convert user address space to bus address space
+        # (for instance, for a core with base address 10 and width 33,
+        # reading from address 4 is actually a read from address 14 and address 14 + depth, and address 14 + 2*depth)
+
+        bus_addrs = []
+        for addr in addrs:
+            bus_addrs += [addr + self.base_addr + i*self.depth for i in range(len(self.mems))]
+
+        datas = self.interface.read(bus_addrs)
+        data_chunks = split_into_chunks(datas, len(self.mems))
+        return [words_to_value(chunk) for chunk in data_chunks]
+
+    def write_to_user_addr(self, addrs, datas):
+        """
+        Read from the address
+        """
+
+        bus_addrs = []
+        for addr in addrs:
+            bus_addrs += [addr + self.base_addr + i*self.depth for i in range(len(self.mems))]
+
+        bus_datas = []
+        for data in datas:
+            bus_datas += value_to_words(data)
+
+        self.interface.write(bus_addrs, bus_datas)
