@@ -4,7 +4,7 @@ from amaranth_boards.icestick import ICEStickPlatform
 from splat import Splat
 from splat.utils import *
 import pytest
-from random import sample
+from random import randint, sample
 
 config_file = "test/test_mem_core_hardware.yaml"
 s = Splat(config_file)
@@ -29,6 +29,14 @@ class ReadOnlyMemoryCoreLoopback(Elaboratable):
         return m
 
 
+def write_user_side(addr, data):
+    io_core.set_probe("we", 0)
+    io_core.set_probe("addr", addr)
+    io_core.set_probe("data", data)
+    io_core.set_probe("we", 1)
+    io_core.set_probe("we", 0)
+
+
 def verify_mem_core(platform):
     """
     Test that all output probes take their expected initial values.
@@ -37,15 +45,11 @@ def verify_mem_core(platform):
     """
 
     # Build and program board
-    # platform.build(ReadOnlyMemoryCoreLoopback(), do_program=True)
+    platform.build(ReadOnlyMemoryCoreLoopback(), do_program=True)
 
     # Fill up memory from the user side
     for i in range(1024):
-        io_core.set_probe("we", 0)
-        io_core.set_probe("addr", i)
-        io_core.set_probe("data", i)
-        io_core.set_probe("we", 1)
-        io_core.set_probe("we", 0)
+        write_user_side(i, i)
 
     # Read it back out sequentially from the bus side
     for i in range(1024):
@@ -55,11 +59,23 @@ def verify_mem_core(platform):
                 f"Memory read from {hex(i)} returned {hex(data)} instead of {hex(i)}."
             )
 
-    for i in sample(range(0x1024), k=1024):
+    # Read it back out randomly from the bus side
+    for i in sample(range(1024), k=1024):
         data = mem_core.read_from_user_addr(i)
         if data != i:
             raise ValueError(
                 f"Memory read from {hex(i)} returned {hex(data)} instead of {hex(i)}."
+            )
+
+    # Read and write randomly from the bus side
+    for addr in sample(range(1024), k=1024):
+        data = randint(0, 2**33 - 1)
+        write_user_side(addr, data)
+
+        readback = mem_core.read_from_user_addr(addr)
+        if readback != data:
+            raise ValueError(
+                f"Memory read from {hex(addr)} returned {hex(readback)} instead of {hex(data)}."
             )
 
 
