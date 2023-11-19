@@ -11,13 +11,11 @@ class ReadOnlyMemoryCore(Elaboratable):
         self.interface = interface
 
         self.check_config(config)
-        self.define_signals()
 
         self.depth = self.config["depth"]
         self.width = self.config["width"]
-        self.addr_width = ceil(log2(self.depth))
-        self.n_mems = ceil(self.width / 16)
-        self.max_addr = self.base_addr + (self.depth * self.n_mems)
+
+        self.define_signals()
 
     def check_config(self, config):
         # Check for unrecognized options
@@ -47,38 +45,30 @@ class ReadOnlyMemoryCore(Elaboratable):
             raise ValueError("Width of memory core must be positive. ")
 
     def define_signals(self):
+        # Bus Input
         self.addr_i = Signal(16)
         self.data_i = Signal(16)
         self.rw_i = Signal(1)
         self.valid_i = Signal(1)
 
+        # Bus Pipelining
         self.addr_pipe = [Signal(16) for _ in range(3)]
         self.data_pipe = [Signal(16) for _ in range(3)]
         self.rw_pipe = [Signal(1) for _ in range(3)]
         self.valid_pipe = [Signal(1) for _ in range(3)]
 
+        # Bus Output
         self.addr_o = Signal(16, reset=0)
         self.data_o = Signal(16, reset=0)
         self.rw_o = Signal(1, reset=0)
         self.valid_o = Signal(1, reset=0)
 
-    def elaborate(self, platform):
-        m = Module()
+        # User Port
+        self.user_addr = Signal(range(self.depth))
+        self.user_data = Signal(self.width)
+        self.user_we = Signal(1)
 
-        # Set up memory
-        self.mem = Memory(width=16, depth=self.depth)
-        m.submodules["mem"] = self.mem
-
-        # Set up read port
-        read_port = self.mem.read_port()
-        m.d.comb += read_port.en.eq(1)
-
-        # Set up write port
-        write_port = self.mem.write_port()
-        self.user_addr = write_port.addr
-        self.user_data = write_port.data
-        self.user_we = write_port.en
-
+    def pipeline_bus(self, m):
         # Pipelining
         m.d.sync += self.addr_pipe[0].eq(self.addr_i)
         m.d.sync += self.data_pipe[0].eq(self.data_i)
@@ -96,66 +86,69 @@ class ReadOnlyMemoryCore(Elaboratable):
         m.d.sync += self.rw_o.eq(self.rw_pipe[2])
         m.d.sync += self.valid_o.eq(self.valid_pipe[2])
 
-        # Perform memory reads/writes
-        start_addr = self.base_addr
-        stop_addr = start_addr + self.depth
+    def define_mems(self, m):
+        # ok there's three cases:
+        # 1. integer number of 16 bit mems
+        # 2. integer number of 16 bit mems + partial mem
+        # 3. just the partial mem (width < 16)
 
-        # Throw BRAM operations into the front of the pipeline
-        with m.If(
-            (self.valid_i)
-            & (~self.rw_i)
-            & (self.addr_i >= start_addr)
-            & (self.addr_i <= stop_addr)
-        ):
-            m.d.sync += read_port.addr.eq(self.addr_i - start_addr)
+        # Only one, partial-width memory is needed
+        if self.width < 16:
+            self.mems = [Memory(depth=self.depth, width=self.width)]
 
-        # Pull BRAM reads from the back of the pipeline
-        with m.If(
-            (self.valid_pipe[2])
-            & (~self.rw_pipe[2])
-            & (self.addr_pipe[2] >= start_addr)
-            & (self.addr_pipe[2] <= stop_addr)
-        ):
-            m.d.sync += self.data_o.eq(read_port.data)
+        # Only full-width memories are needed
+        elif self.width % 16 == 0:
+            self.mems = [Memory(depth=self.depth, width=16) for _ in range(self.width // 16)]
 
+        # Both full-width and partial memories are needed
+        else:
+            self.mems = [Memory(depth=self.depth, width=16) for i in range(self.width // 16)]
+            self.mems += [Memory(depth=self.depth, width=self.width % 16)]
+
+        # Add memories as submodules
+        for i, mem in enumerate(self.mems):
+            m.submodules[f"mem_{i}"] = mem
+
+    def handle_read_ports(self, m):
+        # These are tied to the bus
+        for i, mem in enumerate(self.mems):
+            read_port = mem.read_port()
+            m.d.comb += read_port.en.eq(1)
+
+            start_addr = self.base_addr + (i * self.depth)
+            stop_addr = start_addr + self.depth - 1
+
+            # Throw BRAM operations into the front of the pipeline
+            with m.If(
+                (self.valid_i)
+                & (~self.rw_i)
+                & (self.addr_i >= start_addr)
+                & (self.addr_i <= stop_addr)
+            ):
+                m.d.sync += read_port.addr.eq(self.addr_i - start_addr)
+
+            # Pull BRAM reads from the back of the pipeline
+            with m.If(
+                (self.valid_pipe[2])
+                & (~self.rw_pipe[2])
+                & (self.addr_pipe[2] >= start_addr)
+                & (self.addr_pipe[2] <= stop_addr)
+            ):
+                m.d.sync += self.data_o.eq(read_port.data)
+
+    def handle_write_ports(self, m):
+        # These are given to the user
+        for i, mem in enumerate(self.mems):
+            write_port = mem.write_port()
+
+            m.d.comb += write_port.addr.eq(self.user_addr)
+            m.d.comb += write_port.data.eq(self.user_data[16 * i : 16 * (i + 1)])
+            m.d.comb += write_port.en.eq(self.user_we)
+
+    def elaborate(self, platform):
+        m = Module()
+        self.pipeline_bus(m)
+        self.define_mems(m)
+        self.handle_read_ports(m)
+        self.handle_write_ports(m)
         return m
-
-        # for i, mem in self.mems:
-        #     m.submodules[f"mem_{i}"] = mem
-        #     start_addr = self.base_addr + (i * self.depth)
-        #     stop_addr = start_addr + self.depth
-
-        #     with m.If( (self.addr_i >= start_addr) & (self.addr_i <= stop_addr) ):
-        #         with m.If(self.rw_i):
-        #             mem.porta.addr.eq(self.addr_i - start_addr)
-        #             mem.porta.data.eq(self.data_i)
-        #             mem.porta.we.eq(1)
-
-        #         with m.Else():
-        #             mem[i].porta.addr.eq(self.addr_i - start_addr)
-        #             self.data_o.eq(self.mems[i].porta.data)
-
-        # m.d.comb += self.user.dout(Cat( [mem[i].portb.dout] for i in ...))
-
-        # self.user_clk
-        # self.user_addr
-        # self.user_din
-        # self.user_dout
-        # self.user_we
-
-    # I'm not sure either of these are correct - shouldn't we be reading from more than one
-    # address if we're reading from something that's greater than 16-bits wide?
-
-    # def write(self, addrs, datas):
-    #     if isinstance(addrs, list):
-    #         self.interface.write( ([a - self.base_addr] for a in addrs) , datas)
-
-    #     else:
-    #         self.interface.write(addrs - self.base_addr, datas)
-
-    # def read(self, addrs):
-    #     if isinstance(addrs, list):
-    #         self.interface.read([a - self.base_addr] for a in addrs)
-
-    #     else:
-    #         self.interface.read(addrs - self.base_addr)
