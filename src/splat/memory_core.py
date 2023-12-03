@@ -21,7 +21,7 @@ class ReadOnlyMemoryCore(Elaboratable):
 
     def check_config(self, config):
         # Check for unrecognized options
-        valid_options = ["type", "depth", "width", "disable_user_port"]
+        valid_options = ["type", "depth", "width"]
         for option in config:
             if option not in valid_options:
                 warn(f"Ignoring unrecognized option '{option}' in memory core.")
@@ -158,6 +158,9 @@ class ReadOnlyMemoryCore(Elaboratable):
         self.handle_read_ports(m)
         self.handle_write_ports(m)
         return m
+
+    def get_top_level_ports(self):
+        return [self.user_addr, self.user_data, self.user_we]
 
     def read_from_user_addr(self, addrs):
         """
