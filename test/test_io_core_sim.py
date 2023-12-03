@@ -2,10 +2,17 @@ from amaranth.sim import Simulator
 from splat.io_core import IOCore
 from splat.utils import *
 from random import randint
-import yaml
 
-with open("test/splat.yaml", "r") as file:
-    config = yaml.safe_load(file)["cores"]["io_core"]
+config = {
+    "type": "io",
+    "inputs": {"probe0": 1, "probe1": 2, "probe2": 8, "probe3": 20},
+    "outputs": {
+        "probe4": {"width": 1, "initial_value": 1},
+        "probe5": {"width": 2, "initial_value": 2},
+        "probe6": 8,
+        "probe7": {"width": 20, "initial_value": 65538},
+    },
+}
 
 io_core = IOCore(config, base_addr=0, interface=None)
 

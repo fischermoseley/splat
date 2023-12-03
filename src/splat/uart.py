@@ -13,7 +13,7 @@ class UARTInterface(Elaboratable):
         self.port = config["port"]
         self.clock_freq = config["clock_freq"]
         self.baudrate = config["baudrate"]
-        self.clocks_per_baud = self.clock_freq // self.baudrate
+        self.clocks_per_baud = int(self.clock_freq // self.baudrate)
 
         self.define_signals()
 

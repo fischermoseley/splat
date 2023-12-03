@@ -8,9 +8,16 @@ from .memory_core import ReadOnlyMemoryCore
 
 
 class Splat(Elaboratable):
-    def __init__(self, config_path):
-        # load config
-        self.config = self.read_config_file(config_path)
+    def __init__(self, config):
+        # load config from either a configuration file or a dictionary. Users primarily use the
+        # config file, but the dictionary is included for internal tests.
+
+        if isinstance(config, str):
+            self.config = self.read_config_file(config)
+
+        if isinstance(config, dict):
+            self.config = config
+
         self.check_config()
 
         self.interface = self.get_interface()
