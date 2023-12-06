@@ -162,6 +162,9 @@ class ReadOnlyMemoryCore(Elaboratable):
     def get_top_level_ports(self):
         return [self.user_addr, self.user_data, self.user_we]
 
+    def get_max_addr(self):
+        return self.max_addr
+
     def read_from_user_addr(self, addrs):
         """
         Read the memory stored at the provided address, as seen from the user side.

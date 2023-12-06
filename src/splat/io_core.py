@@ -233,6 +233,9 @@ class IOCore(Elaboratable):
 
         return ports
 
+    def get_max_addr(self):
+        return self.max_addr
+
     def set_probe(self, probe_name, value):
         # set value in buffer
         addrs = self.mmap[probe_name + "_buf"]["addrs"]

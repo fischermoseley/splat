@@ -39,6 +39,10 @@ class LogicAnalyzerCore(Elaboratable):
             "NEQ" : 9
         }
 
+        self.registers = self.make_registers(self.base_addr)
+        self.sample_mem = self.make_sample_mem(self.registers.max_addr)
+        self.define_signals()
+
     def check_config(self, config):
         # Check for unrecognized options
         valid_options = ["type", "sample_depth", "probes", "triggers", "trigger_loc", "trigger_mode"]
@@ -99,19 +103,20 @@ class LogicAnalyzerCore(Elaboratable):
         self.valid_i = Signal(1)
 
         # Bus Output
-        self.addr_i = Signal(16)
-        self.data_i = Signal(16)
-        self.rw_i = Signal(1)
-        self.valid_i = Signal(1)
+        self.addr_o = Signal(16)
+        self.data_o = Signal(16)
+        self.rw_o= Signal(1)
+        self.valid_o = Signal(1)
 
         # Probes
         self.probe_signals = {}
-        for name, width in self.config["probes"]:
+        for name, width in self.config["probes"].items():
             self.probe_signals[name] = {
                 "top_level" : Signal(width),
                 "prev" : Signal(width),
                 "trigger_arg" : getattr(self.registers, f"{name}_arg"),
-                "trigger_op" : getattr(self.registers, f"{name}_op")
+                "trigger_op" : getattr(self.registers, f"{name}_op"),
+                "triggered" : Signal(1)
             }
 
         # Global trigger. High if any probe is triggered.
@@ -205,66 +210,61 @@ class LogicAnalyzerCore(Elaboratable):
         self.prev_request_stop = Signal(1)
 
         # Rising edge detection for start/stop requests
-        m.d.sync += self.prev_request_start.eq(self.request_start)
-        m.d.sync += self.prev_request_stop.eq(self.request_stop)
+        m.d.sync += self.prev_request_start.eq(self.registers.request_start)
+        m.d.sync += self.prev_request_stop.eq(self.registers.request_stop)
 
-        m.d.comb += self.sample_mem.user_addr.eq(self.write_pointer)
+        m.d.comb += self.sample_mem.user_addr.eq(self.registers.write_pointer)
 
-        with m.If(self.state == self.states["IDLE"]):
-            m.d.sync += self.write_pointer.eq(0)
-            m.d.sync += self.read_pointer.eq(0)
+        with m.If(self.registers.state == self.states["IDLE"]):
+            m.d.sync += self.registers.write_pointer.eq(0)
+            m.d.sync += self.registers.read_pointer.eq(0)
             m.d.sync += self.sample_mem.user_we.eq(0) # or something like this
 
-            with m.If( (self.request_start) & (~self.prev_request_start) ):
-                m.d.sync += self.state.eq(self.states["MOVE_TO_POSITION"])
+            with m.If( (self.registers.request_start) & (~self.prev_request_start) ):
+                m.d.sync += self.registers.state.eq(self.states["MOVE_TO_POSITION"])
 
-        with m.Elif(self.state == self.states["MOVE_TO_POSITION"]):
-            m.d.sync += self.write_pointer.eq(self.write_pointer + 1)
+        with m.Elif(self.registers.state == self.states["MOVE_TO_POSITION"]):
+            m.d.sync += self.registers.write_pointer.eq(self.registers.write_pointer + 1)
             m.d.sync += self.sample_mem.user_we.eq(1)
 
-            with m.If(self.write_pointer == self.trigger_loc):
+            with m.If(self.registers.write_pointer == self.registers.trigger_loc):
                 with m.If(self.trig):
-                    m.d.sync += self.state.eq(self.states["CAPTURING"])
+                    m.d.sync += self.registers.state.eq(self.states["CAPTURING"])
 
-                with m.Else(self.trig):
-                    m.d.sync += self.state.eq(self.states["IN_POSITION"])
+                with m.Elif(self.trig):
+                    m.d.sync += self.registers.state.eq(self.states["IN_POSITION"])
 
-        with m.Elif(self.state == self.states["IN_POSITION"]):
-            m.d.sync += self.write_pointer.eq((self.write_pointer + 1) % self.config["sample_depth"])
-            m.d.sync += self.read_pointer.eq((self.read_pointer + 1) % self.config["sample_depth"])
+        with m.Elif(self.registers.state == self.states["IN_POSITION"]):
+            m.d.sync += self.registers.write_pointer.eq((self.registers.write_pointer + 1) % self.config["sample_depth"])
+            m.d.sync += self.registers.read_pointer.eq((self.registers.read_pointer + 1) % self.config["sample_depth"])
             m.d.sync += self.sample_mem.user_we.eq(1)
 
             with m.If(self.trig):
-                m.d.sync += self.state.eq(self.states["CAPTURING"])
+                m.d.sync += self.registers.state.eq(self.states["CAPTURING"])
 
-        with m.Elif(self.state == self.states["CAPTURING"]):
-            with m.If(self.write_pointer == self.read_pointer):
+        with m.Elif(self.registers.state == self.states["CAPTURING"]):
+            with m.If(self.registers.write_pointer == self.registers.read_pointer):
                 m.d.sync += self.sample_mem.user_we.eq(0)
-                m.d.sync += self.state.eq(self.states["CAPTURED"])
+                m.d.sync += self.registers.state.eq(self.states["CAPTURED"])
 
             with m.Else():
-                m.d.sync += self.write_pointer.eq((self.write_pointer + 1) % self.config["sample_depth"])
+                m.d.sync += self.registers.write_pointer.eq((self.registers.write_pointer + 1) % self.config["sample_depth"])
 
-        with m.If( (self.request_stop) & (~self.prev_request_stop) ):
-            m.d.sync = self.state.eq(self.states["IDLE"])
+        with m.If( (self.registers.request_stop) & (~self.prev_request_stop) ):
+            m.d.sync += self.registers.state.eq(self.states["IDLE"])
 
     def elaborate(self, platform):
         m = Module()
 
-        # Add registers as a submodule
-        self.registers = self.make_registers(self.base_addr)
+        # Add registers and sample memory as submodules
         m.submodules["registers"] = self.registers
-
-        # Add sample memory as a submodule
-        self.sample_mem = self.make_registers(self.registers.max_addr)
         m.submodules["sample_mem"] = self.sample_mem
 
         # Concat all the probes together, and feed to input of sample memory
         # (it is necessary to reverse the order such that first probe occupies
         # the lowest location in memory)
-        m.d.comb += self.sample_mem.user_data.eq(Cat( [p["top_level"] for p in self.probe_signals][::-1] ))
+        m.d.comb += self.sample_mem.user_data.eq(Cat( [p["top_level"] for p in self.probe_signals.values()][::-1] ))
 
-        self.define_signals()
         self.run_state_machine(m)
         self.run_triggers(m)
 
@@ -289,4 +289,7 @@ class LogicAnalyzerCore(Elaboratable):
         return m
 
     def get_top_level_ports(self):
-        return list(self.probe_signals.keys())
+        return [p["top_level"] for p in self.probe_signals.values()]
+
+    def get_max_addr(self):
+        return self.sample_mem.get_max_addr()
