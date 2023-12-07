@@ -37,21 +37,20 @@ class LogicAnalyzerCounterTest(Elaboratable):
 
     def elaborate(self, platform):
         m = Module()
-
-        # Free-running counter
-        self.counter = Signal(13)
-        m.d.sync += self.counter.eq(self.counter + 1)
-
         m.submodules["splat"] = self.s
         uart_pins = platform.request("uart")
 
+        larry = self.s.la.probe_signals["larry"]["top_level"]
+        curly = self.s.la.probe_signals["curly"]["top_level"]
+        moe = self.s.la.probe_signals["moe"]["top_level"]
+
+        m.d.sync += larry.eq(larry + 1)
+        m.d.sync += curly.eq(curly + 1)
+        m.d.sync += moe.eq(moe + 1)
 
         m.d.comb += [
-            self.s.larry.eq(self.counter[0]),
-            self.s.curly.eq(self.counter[1:4]),
-            self.s.moe.eq(self.counter[4:]),
             self.s.interface.rx.eq(uart_pins.rx.i),
-            uart_pins.tx.o.eq(self.s.interface.tx),
+            uart_pins.tx.o.eq(self.s.interface.tx)
         ]
 
         return m
@@ -61,8 +60,18 @@ class LogicAnalyzerCounterTest(Elaboratable):
 
     def verify(self):
         self.build_and_program()
-        cap = self.capture()
-        print(cap.capture_data)
+        cap = self.s.la.capture()
+
+        # check that VCD export works
+        cap.export_vcd("out.vcd")
+
+        # verify that each signal is just a counter modulo the width of the signal
+        for name, width in self.s.la.config["probes"].items():
+            trace = cap.get_trace(name)
+
+            for i in range(len(trace) - 1):
+                if trace[i+1] != (trace[i] + 1) % (2**width):
+                    raise ValueError("Bad counter!")
 
 
 @pytest.mark.skipif(not xilinx_tools_installed(), reason="no toolchain installed")

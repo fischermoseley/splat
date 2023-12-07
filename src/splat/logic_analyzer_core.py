@@ -25,6 +25,13 @@ class LogicAnalyzerCore(Elaboratable):
             "CAPTURED" : 4
         }
 
+        # Trigger Modes
+        self.trigger_modes = {
+            "SINGLE_SHOT": 0,
+            "INCREMENTAL": 1,
+            "IMMEDIATE": 2
+        }
+
         # Trigger operations
         self.operations = {
             "DISABLE" : 0,
@@ -94,6 +101,37 @@ class LogicAnalyzerCore(Elaboratable):
             valid_modes = ["single_shot", "incremental", "immediate"]
             if config["trigger_mode"] not in valid_modes:
                 raise ValueError(f"Unrecognized trigger mode {config['trigger_mode']} provided.")
+
+        # Check triggers themselves
+        for trigger in config["triggers"]:
+            if not isinstance(trigger, str):
+                raise ValueError("Trigger must be specified with a string.")
+
+            # Trigger conditions may be composed of either two or three components,
+            # depending on the operation specified. In the case of operations that
+            # don't need an argument (like DISABLE, RISING, FALLING, CHANGING) or
+            # three statements in
+
+            # Check the trigger operations
+            components = trigger.strip().split(" ")
+            if len(components) == 2:
+                name, op = components
+                if op not in ["DISABLE", "RISING", "FALLING", "CHANGING"]:
+                    raise ValueError(f"Unable to interpret trigger condition '{trigger}'.")
+
+            elif len(components) == 3:
+                name, op, arg = components
+                if op not in ["GT", "LT", "GEQ", "LEQ", "EQ", "NEQ"]:
+                    raise ValueError(f"Unable to interpret trigger condition '{trigger}'.")
+
+            else:
+                raise ValueError(f"Unable to interpret trigger condition '{trigger}'.")
+
+            # Check probe names
+            if components[0] not in config["probes"]:
+                raise ValueError(f"Unknown probe name '{components[0]}' specified.")
+
+
 
     def define_signals(self):
         # Bus Input
@@ -292,6 +330,28 @@ class LogicAnalyzerCore(Elaboratable):
     def get_max_addr(self):
         return self.sample_mem.get_max_addr()
 
+    def set_triggers(self):
+        # reset all triggers to zero
+        for name in self.probe_signals.keys():
+            self.registers.set_probe(name + "_op", 0)
+            self.registers.set_probe(name + "_arg", 0)
+
+        # set triggers
+        for trigger in self.config["triggers"]:
+            components = trigger.strip().split(' ')
+
+            # Handle triggers that don't need an argument
+            if len(components) == 2:
+                name, op = components
+                self.registers.set_probe(name + "_op", self.operations[op])
+
+            # Handle triggers that do need an argument
+            elif len(components) == 3:
+                name, op, arg = components
+                self.registers.set_probe(name + "_op", self.operations[op])
+                self.registers.set_probe(name + "_arg", arg)
+
+
     def capture(self, verbose=False):
         print_if_verbose = lambda x: print(x) if verbose else None
 
@@ -306,41 +366,112 @@ class LogicAnalyzerCore(Elaboratable):
             if self.registers.get_probe("state") != self.states["IDLE"]:
                 raise ValueError("Logic analyzer did not reset to IDLE state.")
 
-        print_if_verbose(" -> Setting trigger conditions...")
-        self.set_trigger_conditions()
+        # Set triggers
+        print_if_verbose(" -> Setting triggers...")
+        self.set_triggers()
 
+        # Set trigger mode, default to single-shot if user didn't specify a mode
         print_if_verbose(" -> Setting trigger mode...")
-        self.registers.set_probe("trigger_mode", self.config["trigger_mode"])
+        if "trigger_mode" in self.config:
+            self.registers.set_probe("trigger_mode", self.config["trigger_mode"])
 
+        else:
+            self.registers.set_probe("trigger_mode", self.trigger_modes["SINGLE_SHOT"])
+
+        # Set trigger location
         print_if_verbose(" -> Setting trigger location...")
         self.registers.set_probe("trigger_loc", self.config["trigger_loc"])
 
+        # Send a start request to the state machine
         print_if_verbose(" -> Starting capture...")
         self.registers.set_probe("request_start", 1)
         self.registers.set_probe("request_start", 0)
 
+        # Poll the state machine's state, and wait for the capture to complete
         print_if_verbose(" -> Waiting for capture to complete...")
         while(self.registers.get_probe("state") != self.states["CAPTURED"]):
             pass
 
+        # Read out the entirety of the sample memory
         print_if_verbose(" -> Reading sample memory contents...")
-        raw_capture = self.sample_mem.read_from_user_addr(list(range(self.sample_depth)))
+        addrs = list(range(self.config["sample_depth"]))
+        raw_capture = self.sample_mem.read_from_user_addr(addrs)
 
+        # Revolve the memory around the read_pointer, such that all the beginning
+        # of the caputure is at the first element
         print_if_verbose(" -> Checking read pointer and revolving memory...")
         read_pointer = self.registers.get_probe("read_pointer")
 
         data = raw_capture[read_pointer:] + raw_capture[:read_pointer]
-        return LogicAnalyzerCapture(data)
+        return LogicAnalyzerCapture(data, self.config)
 
 class LogicAnalyzerCapture():
-    def __init__(self, data):
+    def __init__(self, data, config):
         self.data = data
+        self.config = config
 
-    def get_trace(self, name):
-        pass
+    def get_trigger_loc(self):
+        return self.config["trigger_loc"]
 
-    def export_vcd():
-        pass
+    def get_trace(self, probe_name):
+        # sum up the widths of all the probes below this one
+        lower = 0
+        for name, width in self.config["probes"].items():
+            if name == probe_name:
+                break
+
+            lower += width
+
+        # add the width of the probe we'd like
+        upper = lower + self.config["probes"][probe_name]
+
+        total_probe_width = sum(self.config["probes"].values())
+        binary = [f"{d:0{total_probe_width}b}" for d in self.data]
+        return [int(b[lower:upper], 2) for b in binary]
+
+    def export_vcd(self, path):
+        from vcd import VCDWriter
+        from datetime import datetime
+
+        # Use the same datetime format that iVerilog uses
+        timestamp = datetime.now().strftime("%a %b %w %H:%M:%S %Y")
+        vcd_file = open(path, "w")
+
+        with VCDWriter(vcd_file, '10 ns', timestamp, "splat") as writer:
+            # each probe has a name, width, and writer associated with it
+            signals = []
+            for name, width in self.config["probes"].items():
+                signal = {
+                    "name" : name,
+                    "width" : width,
+                    "data" : self.get_trace(name),
+                    "var": writer.register_var("splat", name, "wire", size=width)
+                }
+                signals.append(signal)
+
+            clock = writer.register_var("manta", "clk", "wire", size=1)
+            trigger = writer.register_var("manta", "trigger", "wire", size=1)
+
+            # add the data to each probe in the vcd file
+            for timestamp in range(0, 2*len(self.data)):
+
+                # run the clock
+                writer.change(clock, timestamp, timestamp % 2 == 0)
+
+                # set the trigger
+                triggered = (timestamp // 2) >= self.get_trigger_loc()
+                writer.change(trigger, timestamp, triggered)
+
+                # add other signals
+                for signal in signals:
+                    var = signal["var"]
+                    sample = signal["data"][timestamp // 2]
+
+                    writer.change(var, timestamp, sample)
+
+        vcd_file.close()
+
+
 
     def export_mem():
         pass
