@@ -201,9 +201,7 @@ class LogicAnalyzerCore(Elaboratable):
                 m.d.comb += triggered.eq(0)
 
         # Combine all the triggers
-        m.d.comb += self.trig.eq(0)
-        for name, attrs in self.probe_signals.items():
-            m.d.comb += self.trig.eq( (self.trig) & (attrs["triggered"]) )
+        m.d.comb += self.trig.eq( Cat(attrs["triggered"] for attrs in self.probe_signals.values()).any() )
 
     def run_state_machine(self, m):
         self.prev_request_start = Signal(1)
@@ -231,7 +229,7 @@ class LogicAnalyzerCore(Elaboratable):
                 with m.If(self.trig):
                     m.d.sync += self.registers.state.eq(self.states["CAPTURING"])
 
-                with m.Elif(self.trig):
+                with m.Else():
                     m.d.sync += self.registers.state.eq(self.states["IN_POSITION"])
 
         with m.Elif(self.registers.state == self.states["IN_POSITION"]):
@@ -293,3 +291,56 @@ class LogicAnalyzerCore(Elaboratable):
 
     def get_max_addr(self):
         return self.sample_mem.get_max_addr()
+
+    def capture(self, verbose=False):
+        print_if_verbose = lambda x: print(x) if verbose else None
+
+        # If core is not in IDLE state, request that it return to IDLE
+        print_if_verbose(" -> Resetting core...")
+        state = self.registers.get_probe("state")
+        if state != self.states["IDLE"]:
+            self.registers.set_probe("request_stop", 0)
+            self.registers.set_probe("request_stop", 1)
+            self.registers.set_probe("request_stop", 0)
+
+            if self.registers.get_probe("state") != self.states["IDLE"]:
+                raise ValueError("Logic analyzer did not reset to IDLE state.")
+
+        print_if_verbose(" -> Setting trigger conditions...")
+        self.set_trigger_conditions()
+
+        print_if_verbose(" -> Setting trigger mode...")
+        self.registers.set_probe("trigger_mode", self.config["trigger_mode"])
+
+        print_if_verbose(" -> Setting trigger location...")
+        self.registers.set_probe("trigger_loc", self.config["trigger_loc"])
+
+        print_if_verbose(" -> Starting capture...")
+        self.registers.set_probe("request_start", 1)
+        self.registers.set_probe("request_start", 0)
+
+        print_if_verbose(" -> Waiting for capture to complete...")
+        while(self.registers.get_probe("state") != self.states["CAPTURED"]):
+            pass
+
+        print_if_verbose(" -> Reading sample memory contents...")
+        raw_capture = self.sample_mem.read_from_user_addr(list(range(self.sample_depth)))
+
+        print_if_verbose(" -> Checking read pointer and revolving memory...")
+        read_pointer = self.registers.get_probe("read_pointer")
+
+        data = raw_capture[read_pointer:] + raw_capture[:read_pointer]
+        return LogicAnalyzerCapture(data)
+
+class LogicAnalyzerCapture():
+    def __init__(self, data):
+        self.data = data
+
+    def get_trace(self, name):
+        pass
+
+    def export_vcd():
+        pass
+
+    def export_mem():
+        pass
