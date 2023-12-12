@@ -5,6 +5,7 @@ from splat import Splat
 from splat.utils import *
 import pytest
 
+
 class LogicAnalyzerCounterTest(Elaboratable):
     def __init__(self, platform, port):
         self.platform = platform
@@ -20,12 +21,8 @@ class LogicAnalyzerCounterTest(Elaboratable):
                     "type": "logic_analyzer",
                     "sample_depth": 1024,
                     "trigger_loc": 500,
-                    "probes": {
-                        "larry" : 1,
-                        "curly" : 3,
-                        "moe" : 9
-                    },
-                    "triggers": ["moe RISING"]
+                    "probes": {"larry": 1, "curly": 3, "moe": 9},
+                    "triggers": ["moe RISING"],
                 },
             },
             "uart": {
@@ -50,7 +47,7 @@ class LogicAnalyzerCounterTest(Elaboratable):
 
         m.d.comb += [
             self.s.interface.rx.eq(uart_pins.rx.i),
-            uart_pins.tx.o.eq(self.s.interface.tx)
+            uart_pins.tx.o.eq(self.s.interface.tx),
         ]
 
         return m
@@ -73,7 +70,7 @@ class LogicAnalyzerCounterTest(Elaboratable):
             trace = cap.get_trace(name)
 
             for i in range(len(trace) - 1):
-                if trace[i+1] != (trace[i] + 1) % (2**width):
+                if trace[i + 1] != (trace[i] + 1) % (2**width):
                     raise ValueError("Bad counter!")
 
 

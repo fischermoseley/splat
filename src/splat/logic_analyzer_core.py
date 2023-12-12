@@ -5,9 +5,9 @@ from .io_core import IOCore
 from .memory_core import ReadOnlyMemoryCore
 from math import ceil, log2
 
+
 class LogicAnalyzerCore(Elaboratable):
-    """
-    """
+    """ """
 
     def __init__(self, config, base_addr, interface):
         self.config = config
@@ -20,30 +20,26 @@ class LogicAnalyzerCore(Elaboratable):
         self.states = {
             "IDLE": 0,
             "MOVE_TO_POSITION": 1,
-            "IN_POSITION" : 2,
-            "CAPTURING" : 3,
-            "CAPTURED" : 4
+            "IN_POSITION": 2,
+            "CAPTURING": 3,
+            "CAPTURED": 4,
         }
 
         # Trigger Modes
-        self.trigger_modes = {
-            "SINGLE_SHOT": 0,
-            "INCREMENTAL": 1,
-            "IMMEDIATE": 2
-        }
+        self.trigger_modes = {"SINGLE_SHOT": 0, "INCREMENTAL": 1, "IMMEDIATE": 2}
 
         # Trigger operations
         self.operations = {
-            "DISABLE" : 0,
-            "RISING" : 1,
-            "FALLING" : 2,
-            "CHANGING" : 3,
-            "GT" : 4,
-            "LT" : 5,
-            "GEQ" : 6,
-            "LEQ" : 7,
-            "EQ" : 8,
-            "NEQ" : 9
+            "DISABLE": 0,
+            "RISING": 1,
+            "FALLING": 2,
+            "CHANGING": 3,
+            "GT": 4,
+            "LT": 5,
+            "GEQ": 6,
+            "LEQ": 7,
+            "EQ": 8,
+            "NEQ": 9,
         }
 
         self.registers = self.make_registers(self.base_addr)
@@ -52,7 +48,14 @@ class LogicAnalyzerCore(Elaboratable):
 
     def check_config(self, config):
         # Check for unrecognized options
-        valid_options = ["type", "sample_depth", "probes", "triggers", "trigger_loc", "trigger_mode"]
+        valid_options = [
+            "type",
+            "sample_depth",
+            "probes",
+            "triggers",
+            "trigger_loc",
+            "trigger_mode",
+        ]
         for option in config:
             if option not in valid_options:
                 warn(f"Ignoring unrecognized option '{option}' in Logic Analyzer.")
@@ -100,7 +103,9 @@ class LogicAnalyzerCore(Elaboratable):
         if "trigger_mode" in config:
             valid_modes = ["single_shot", "incremental", "immediate"]
             if config["trigger_mode"] not in valid_modes:
-                raise ValueError(f"Unrecognized trigger mode {config['trigger_mode']} provided.")
+                raise ValueError(
+                    f"Unrecognized trigger mode {config['trigger_mode']} provided."
+                )
 
         # Check triggers themselves
         for trigger in config["triggers"]:
@@ -117,12 +122,16 @@ class LogicAnalyzerCore(Elaboratable):
             if len(components) == 2:
                 name, op = components
                 if op not in ["DISABLE", "RISING", "FALLING", "CHANGING"]:
-                    raise ValueError(f"Unable to interpret trigger condition '{trigger}'.")
+                    raise ValueError(
+                        f"Unable to interpret trigger condition '{trigger}'."
+                    )
 
             elif len(components) == 3:
                 name, op, arg = components
                 if op not in ["GT", "LT", "GEQ", "LEQ", "EQ", "NEQ"]:
-                    raise ValueError(f"Unable to interpret trigger condition '{trigger}'.")
+                    raise ValueError(
+                        f"Unable to interpret trigger condition '{trigger}'."
+                    )
 
             else:
                 raise ValueError(f"Unable to interpret trigger condition '{trigger}'.")
@@ -130,8 +139,6 @@ class LogicAnalyzerCore(Elaboratable):
             # Check probe names
             if components[0] not in config["probes"]:
                 raise ValueError(f"Unknown probe name '{components[0]}' specified.")
-
-
 
     def define_signals(self):
         # Bus Input
@@ -143,18 +150,18 @@ class LogicAnalyzerCore(Elaboratable):
         # Bus Output
         self.addr_o = Signal(16)
         self.data_o = Signal(16)
-        self.rw_o= Signal(1)
+        self.rw_o = Signal(1)
         self.valid_o = Signal(1)
 
         # Probes
         self.probe_signals = {}
         for name, width in self.config["probes"].items():
             self.probe_signals[name] = {
-                "top_level" : Signal(width),
-                "prev" : Signal(width),
-                "trigger_arg" : getattr(self.registers, f"{name}_arg"),
-                "trigger_op" : getattr(self.registers, f"{name}_op"),
-                "triggered" : Signal(1)
+                "top_level": Signal(width),
+                "prev": Signal(width),
+                "trigger_arg": getattr(self.registers, f"{name}_arg"),
+                "trigger_op": getattr(self.registers, f"{name}_op"),
+                "triggered": Signal(1),
             }
 
         # Global trigger. High if any probe is triggered.
@@ -164,17 +171,16 @@ class LogicAnalyzerCore(Elaboratable):
         # The logic analyzer uses an IO core to handle inputs to the FSM and trigger comparators
         register_config = {
             "inputs": {
-                "state" : 4,
-                "read_pointer" : ceil(log2(self.config["sample_depth"])),
-                "write_pointer" : ceil(log2(self.config["sample_depth"]))
+                "state": 4,
+                "read_pointer": ceil(log2(self.config["sample_depth"])),
+                "write_pointer": ceil(log2(self.config["sample_depth"])),
             },
-
             "outputs": {
-                "trigger_loc" : ceil(log2(self.config["sample_depth"])),
-                "trigger_mode" : 2,
-                "request_start" : 1,
-                "request_stop" : 1
-            }
+                "trigger_loc": ceil(log2(self.config["sample_depth"])),
+                "trigger_mode": 2,
+                "request_start": 1,
+                "request_stop": 1,
+            },
         }
 
         for name, width in self.config["probes"].items():
@@ -184,10 +190,9 @@ class LogicAnalyzerCore(Elaboratable):
         return IOCore(register_config, base_addr, self.interface)
 
     def make_sample_mem(self, base_addr):
-
         sample_mem_config = {
             "width": sum(self.config["probes"].values()),
-            "depth": self.config["sample_depth"]
+            "depth": self.config["sample_depth"],
         }
 
         return ReadOnlyMemoryCore(sample_mem_config, base_addr, self.interface)
@@ -201,7 +206,6 @@ class LogicAnalyzerCore(Elaboratable):
             trigger_op = attrs["trigger_op"]
             triggered = attrs["triggered"]
 
-
             # Save the previous value to a register so we can do rising/falling edge detection later!
             m.d.sync += prev.eq(top_level)
 
@@ -209,10 +213,10 @@ class LogicAnalyzerCore(Elaboratable):
                 m.d.comb += triggered.eq(0)
 
             with m.Elif(trigger_op == self.operations["RISING"]):
-                m.d.comb += triggered.eq( (top_level) & (~prev) )
+                m.d.comb += triggered.eq((top_level) & (~prev))
 
             with m.Elif(trigger_op == self.operations["FALLING"]):
-                m.d.comb += triggered.eq( (~top_level)  & (prev) )
+                m.d.comb += triggered.eq((~top_level) & (prev))
 
             with m.Elif(trigger_op == self.operations["CHANGING"]):
                 m.d.comb += triggered.eq(top_level != prev)
@@ -239,7 +243,9 @@ class LogicAnalyzerCore(Elaboratable):
                 m.d.comb += triggered.eq(0)
 
         # Combine all the triggers
-        m.d.comb += self.trig.eq( Cat(attrs["triggered"] for attrs in self.probe_signals.values()).any() )
+        m.d.comb += self.trig.eq(
+            Cat(attrs["triggered"] for attrs in self.probe_signals.values()).any()
+        )
 
     def run_state_machine(self, m):
         self.prev_request_start = Signal(1)
@@ -254,13 +260,15 @@ class LogicAnalyzerCore(Elaboratable):
         with m.If(self.registers.state == self.states["IDLE"]):
             m.d.sync += self.registers.write_pointer.eq(0)
             m.d.sync += self.registers.read_pointer.eq(0)
-            m.d.sync += self.sample_mem.user_we.eq(0) # or something like this
+            m.d.sync += self.sample_mem.user_we.eq(0)  # or something like this
 
-            with m.If( (self.registers.request_start) & (~self.prev_request_start) ):
+            with m.If((self.registers.request_start) & (~self.prev_request_start)):
                 m.d.sync += self.registers.state.eq(self.states["MOVE_TO_POSITION"])
 
         with m.Elif(self.registers.state == self.states["MOVE_TO_POSITION"]):
-            m.d.sync += self.registers.write_pointer.eq(self.registers.write_pointer + 1)
+            m.d.sync += self.registers.write_pointer.eq(
+                self.registers.write_pointer + 1
+            )
             m.d.sync += self.sample_mem.user_we.eq(1)
 
             with m.If(self.registers.write_pointer == self.registers.trigger_loc):
@@ -271,8 +279,12 @@ class LogicAnalyzerCore(Elaboratable):
                     m.d.sync += self.registers.state.eq(self.states["IN_POSITION"])
 
         with m.Elif(self.registers.state == self.states["IN_POSITION"]):
-            m.d.sync += self.registers.write_pointer.eq((self.registers.write_pointer + 1) % self.config["sample_depth"])
-            m.d.sync += self.registers.read_pointer.eq((self.registers.read_pointer + 1) % self.config["sample_depth"])
+            m.d.sync += self.registers.write_pointer.eq(
+                (self.registers.write_pointer + 1) % self.config["sample_depth"]
+            )
+            m.d.sync += self.registers.read_pointer.eq(
+                (self.registers.read_pointer + 1) % self.config["sample_depth"]
+            )
             m.d.sync += self.sample_mem.user_we.eq(1)
 
             with m.If(self.trig):
@@ -284,9 +296,11 @@ class LogicAnalyzerCore(Elaboratable):
                 m.d.sync += self.registers.state.eq(self.states["CAPTURED"])
 
             with m.Else():
-                m.d.sync += self.registers.write_pointer.eq((self.registers.write_pointer + 1) % self.config["sample_depth"])
+                m.d.sync += self.registers.write_pointer.eq(
+                    (self.registers.write_pointer + 1) % self.config["sample_depth"]
+                )
 
-        with m.If( (self.registers.request_stop) & (~self.prev_request_stop) ):
+        with m.If((self.registers.request_stop) & (~self.prev_request_stop)):
             m.d.sync += self.registers.state.eq(self.states["IDLE"])
 
     def elaborate(self, platform):
@@ -299,7 +313,9 @@ class LogicAnalyzerCore(Elaboratable):
         # Concat all the probes together, and feed to input of sample memory
         # (it is necessary to reverse the order such that first probe occupies
         # the lowest location in memory)
-        m.d.comb += self.sample_mem.user_data.eq(Cat( [p["top_level"] for p in self.probe_signals.values()][::-1] ))
+        m.d.comb += self.sample_mem.user_data.eq(
+            Cat([p["top_level"] for p in self.probe_signals.values()][::-1])
+        )
 
         self.run_state_machine(m)
         self.run_triggers(m)
@@ -310,16 +326,14 @@ class LogicAnalyzerCore(Elaboratable):
             self.registers.data_i.eq(self.data_i),
             self.registers.rw_i.eq(self.rw_i),
             self.registers.valid_i.eq(self.valid_i),
-
             self.sample_mem.addr_i.eq(self.registers.addr_o),
             self.sample_mem.data_i.eq(self.registers.data_o),
             self.sample_mem.rw_i.eq(self.registers.rw_o),
             self.sample_mem.valid_i.eq(self.registers.valid_o),
-
             self.addr_o.eq(self.sample_mem.addr_o),
             self.data_o.eq(self.sample_mem.data_o),
             self.rw_o.eq(self.sample_mem.rw_o),
-            self.valid_o.eq(self.sample_mem.valid_o)
+            self.valid_o.eq(self.sample_mem.valid_o),
         ]
 
         return m
@@ -338,7 +352,7 @@ class LogicAnalyzerCore(Elaboratable):
 
         # set triggers
         for trigger in self.config["triggers"]:
-            components = trigger.strip().split(' ')
+            components = trigger.strip().split(" ")
 
             # Handle triggers that don't need an argument
             if len(components) == 2:
@@ -350,7 +364,6 @@ class LogicAnalyzerCore(Elaboratable):
                 name, op, arg = components
                 self.registers.set_probe(name + "_op", self.operations[op])
                 self.registers.set_probe(name + "_arg", arg)
-
 
     def capture(self, verbose=False):
         print_if_verbose = lambda x: print(x) if verbose else None
@@ -389,7 +402,7 @@ class LogicAnalyzerCore(Elaboratable):
 
         # Poll the state machine's state, and wait for the capture to complete
         print_if_verbose(" -> Waiting for capture to complete...")
-        while(self.registers.get_probe("state") != self.states["CAPTURED"]):
+        while self.registers.get_probe("state") != self.states["CAPTURED"]:
             pass
 
         # Read out the entirety of the sample memory
@@ -405,7 +418,8 @@ class LogicAnalyzerCore(Elaboratable):
         data = raw_capture[read_pointer:] + raw_capture[:read_pointer]
         return LogicAnalyzerCapture(data, self.config)
 
-class LogicAnalyzerCapture():
+
+class LogicAnalyzerCapture:
     def __init__(self, data, config):
         self.data = data
         self.config = config
@@ -437,15 +451,15 @@ class LogicAnalyzerCapture():
         timestamp = datetime.now().strftime("%a %b %w %H:%M:%S %Y")
         vcd_file = open(path, "w")
 
-        with VCDWriter(vcd_file, '10 ns', timestamp, "splat") as writer:
+        with VCDWriter(vcd_file, "10 ns", timestamp, "splat") as writer:
             # each probe has a name, width, and writer associated with it
             signals = []
             for name, width in self.config["probes"].items():
                 signal = {
-                    "name" : name,
-                    "width" : width,
-                    "data" : self.get_trace(name),
-                    "var": writer.register_var("splat", name, "wire", size=width)
+                    "name": name,
+                    "width": width,
+                    "data": self.get_trace(name),
+                    "var": writer.register_var("splat", name, "wire", size=width),
                 }
                 signals.append(signal)
 
@@ -453,8 +467,7 @@ class LogicAnalyzerCapture():
             trigger = writer.register_var("manta", "trigger", "wire", size=1)
 
             # add the data to each probe in the vcd file
-            for timestamp in range(0, 2*len(self.data)):
-
+            for timestamp in range(0, 2 * len(self.data)):
                 # run the clock
                 writer.change(clock, timestamp, timestamp % 2 == 0)
 
@@ -491,6 +504,8 @@ class LogicAnalyzerCapture():
 
 class LogicAnalyzerPlayback(Elaboratable):
     def __init__(self, data, config):
+        self.data = data
+        self.config = config
 
         # State Machine
         self.enable = Signal(1)
@@ -498,32 +513,37 @@ class LogicAnalyzerPlayback(Elaboratable):
 
         # Top-Level Probe signals
         self.top_level_probes = {}
-        for name, width in self.config["probes"]:
-            self.top_level_probes[name] = Signal(width, name)
+        for name, width in self.config["probes"].items():
+            self.top_level_probes[name] = Signal(width, name=name)
 
         # Instantiate memory
         self.mem = Memory(
-            depth = self.config["sample_depth"],
-            width = sum(self.config["probes"].values()),
-            init = data)
+            depth=self.config["sample_depth"],
+            width=sum(self.config["probes"].values()),
+            init=self.data,
+        )
 
         self.read_port = self.mem.read_port()
 
     def elaborate(self, platform):
         m = Module()
-        m.d.comb += (self.addr >= self.config["sample_depth"])
-        m.d.comb += self.read_port.en.eq(0)
+        m.submodules["mem"] = self.mem
+
+        m.d.comb += self.done.eq(self.read_port.addr >= self.config["sample_depth"])
+        m.d.comb += self.read_port.en.eq(1)
 
         # Assign the probe values by part-selecting from the data port
         lower = 0
-        for name, width in self.config["probes"]:
+        for name, width in self.config["probes"].items():
             signal = self.top_level_probes[name]
-            m.d.comb += signal.eq(self.read_port.data[lower:lower + width])
+            m.d.comb += signal.eq(self.read_port.data[lower : lower + width])
             lower += width
 
         # Iterate through the samples if saved
         with m.If((self.enable) & (~self.done)):
             m.d.sync += self.read_port.addr.eq(self.read_port.addr + 1)
+
+        return m
 
     def get_top_level_ports(self):
         return [self.enable, self.done] + list(self.top_level_probes.values())

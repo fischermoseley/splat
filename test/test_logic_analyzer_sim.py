@@ -7,12 +7,8 @@ config = {
     "type": "logic_analyzer",
     "sample_depth": 1024,
     "trigger_loc": 500,
-    "probes": {
-        "larry": 1,
-        "curly": 3,
-        "moe": 9
-    },
-    "triggers": ["moe RISING"]
+    "probes": {"larry": 1, "curly": 3, "moe": 9},
+    "triggers": ["moe RISING"],
 }
 
 # class SimulatedBusInterface():
@@ -74,6 +70,7 @@ la = LogicAnalyzerCore(config, base_addr=0, interface=None)
 # la.registers.interface =  interface # unironically the least cursed part of this
 # la.sample_mem.interface = interface # unironically the least cursed part of this
 
+
 def print_data_at_addr(addr):
     # place read transaction on the bus
     yield la.addr_i.eq(addr)
@@ -90,13 +87,15 @@ def print_data_at_addr(addr):
 
     print(f"addr: {hex(addr)} data: {hex((yield la.data_o))}")
 
+
 def set_logic_analyzer_register(name, data):
-    addr = la.registers.mmap[f"{name}_buf"]['addrs'][0]
+    addr = la.registers.mmap[f"{name}_buf"]["addrs"][0]
 
     yield from write_register(la, 0, 0)
     yield from write_register(la, addr, data)
     yield from write_register(la, 0, 1)
     yield from write_register(la, 0, 0)
+
 
 def test_do_you_fucking_work():
     def testbench():
@@ -109,7 +108,9 @@ def test_do_you_fucking_work():
         yield from set_logic_analyzer_register("curly_arg", 4)
 
         # setting trigger mode
-        yield from set_logic_analyzer_register("trigger_mode", 0) # right now this is not actually respected...oops
+        yield from set_logic_analyzer_register(
+            "trigger_mode", 0
+        )  # right now this is not actually respected...oops
 
         # setting trigger location
         yield from set_logic_analyzer_register("trigger_loc", 500)
@@ -135,6 +136,5 @@ def test_do_you_fucking_work():
 
         for addr in range(la.get_max_addr()):
             yield from print_data_at_addr(addr)
-
 
     simulate(la, testbench, "la_core.vcd")
