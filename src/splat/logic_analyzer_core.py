@@ -363,7 +363,7 @@ class LogicAnalyzerCore(Elaboratable):
             elif len(components) == 3:
                 name, op, arg = components
                 self.registers.set_probe(name + "_op", self.operations[op])
-                self.registers.set_probe(name + "_arg", arg)
+                self.registers.set_probe(name + "_arg", int(arg))
 
     def capture(self, verbose=False):
         print_if_verbose = lambda x: print(x) if verbose else None
@@ -463,8 +463,8 @@ class LogicAnalyzerCapture:
                 }
                 signals.append(signal)
 
-            clock = writer.register_var("manta", "clk", "wire", size=1)
-            trigger = writer.register_var("manta", "trigger", "wire", size=1)
+            clock = writer.register_var("splat", "clk", "wire", size=1)
+            trigger = writer.register_var("splat", "trigger", "wire", size=1)
 
             # add the data to each probe in the vcd file
             for timestamp in range(0, 2 * len(self.data)):
@@ -528,20 +528,29 @@ class LogicAnalyzerPlayback(Elaboratable):
     def elaborate(self, platform):
         m = Module()
         m.submodules["mem"] = self.mem
-
-        m.d.comb += self.done.eq(self.read_port.addr >= self.config["sample_depth"])
         m.d.comb += self.read_port.en.eq(1)
 
         # Assign the probe values by part-selecting from the data port
         lower = 0
-        for name, width in self.config["probes"].items():
+        for name, width in reversed(self.config["probes"].items()):
             signal = self.top_level_probes[name]
-            m.d.comb += signal.eq(self.read_port.data[lower : lower + width])
+
+            # Set output probe to zero if we're not
+            with m.If(~self.done):
+                m.d.comb += signal.eq(self.read_port.data[lower : lower + width])
+
+            with m.Else():
+                m.d.comb += signal.eq(0)
+
             lower += width
 
         # Iterate through the samples if saved
         with m.If((self.enable) & (~self.done)):
-            m.d.sync += self.read_port.addr.eq(self.read_port.addr + 1)
+            with m.If(self.read_port.addr < (self.config["sample_depth"] - 1)):
+                m.d.sync += self.read_port.addr.eq(self.read_port.addr + 1)
+
+            with m.Else():
+                m.d.sync += self.done.eq(1)
 
         return m
 
