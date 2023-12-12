@@ -20,8 +20,7 @@ logo = """
 
 Supported commands:
     gen      [config_file] [verilog_file]                           generate a verilog file specifying the Manta module from a given configuration file, and save to the provided path
-    capture  [config_file] [LA_core_name] [vcd_file] [mem_file]     start a capture on the specified core, and save the results to a .mem or .vcd file at the provided path(s)
-    playback [config file] [LA_core_name] [verilog_file]            generate a verilog module that plays back a capture from a given logic analyzer core, and save to the provided path
+    capture  [config_file] [la_core_name] [vcd_file] [verilog_file] start a capture on the specified core, and save the results to a .mem or .vcd file at the provided path(s)
     ports                                                           list all available serial ports
     help                                                            display this help screen
 """
@@ -54,21 +53,15 @@ def gen(config_path, output_path):
 def capture(config_path, logic_analyzer_name, export_paths):
     s = Splat(config_path)
     la = getattr(s, logic_analyzer_name)
-    data = la.capture()
+    cap = la.capture()
 
     for path in export_paths:
         if ".vcd" in path:
-            la.export_vcd(data, path)
-        elif ".mem" in path:
-            la.export_mem(data, path)
+            cap.export_vcd(path)
+        elif ".v" in path:
+            cap.export_playback_verilog(path)
         else:
             warn(f"Unrecognized file type, skipping {path}.")
-
-
-def playback(config_path, logic_analyzer_name, export_path):
-    s = Splat(config_path)
-    la = getattr(s, logic_analyzer_name)
-    la.export_playback_module(export_path)
 
 
 def mmap(config_path):

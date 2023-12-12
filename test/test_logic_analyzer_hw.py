@@ -65,6 +65,9 @@ class LogicAnalyzerCounterTest(Elaboratable):
         # check that VCD export works
         cap.export_vcd("out.vcd")
 
+        # check that Verilog export works
+        cap.export_playback_verilog("out.v")
+
         # verify that each signal is just a counter modulo the width of the signal
         for name, width in self.s.la.config["probes"].items():
             trace = cap.get_trace(name)

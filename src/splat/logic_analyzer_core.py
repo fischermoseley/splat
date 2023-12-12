@@ -471,7 +471,59 @@ class LogicAnalyzerCapture():
 
         vcd_file.close()
 
+    def export_playback_module(self, path):
+        return LogicAnalyzerPlayback(self.data, self.config)
+
+    def export_playback_verilog(self, path):
+        la = LogicAnalyzerPlayback(self.data, self.config)
+        from amaranth.back import verilog
+
+        with open(path, "w") as f:
+            f.write(
+                verilog.convert(
+                    la,
+                    name="logic_analyzer_playback",
+                    ports=la.get_top_level_ports(),
+                    strip_internal_attrs=True,
+                )
+            )
 
 
-    def export_mem():
-        pass
+class LogicAnalyzerPlayback(Elaboratable):
+    def __init__(self, data, config):
+
+        # State Machine
+        self.enable = Signal(1)
+        self.done = Signal(1)
+
+        # Top-Level Probe signals
+        self.top_level_probes = {}
+        for name, width in self.config["probes"]:
+            self.top_level_probes[name] = Signal(width, name)
+
+        # Instantiate memory
+        self.mem = Memory(
+            depth = self.config["sample_depth"],
+            width = sum(self.config["probes"].values()),
+            init = data)
+
+        self.read_port = self.mem.read_port()
+
+    def elaborate(self, platform):
+        m = Module()
+        m.d.comb += (self.addr >= self.config["sample_depth"])
+        m.d.comb += self.read_port.en.eq(0)
+
+        # Assign the probe values by part-selecting from the data port
+        lower = 0
+        for name, width in self.config["probes"]:
+            signal = self.top_level_probes[name]
+            m.d.comb += signal.eq(self.read_port.data[lower:lower + width])
+            lower += width
+
+        # Iterate through the samples if saved
+        with m.If((self.enable) & (~self.done)):
+            m.d.sync += self.read_port.addr.eq(self.read_port.addr + 1)
+
+    def get_top_level_ports(self):
+        return [self.enable, self.done] + list(self.top_level_probes.values())
